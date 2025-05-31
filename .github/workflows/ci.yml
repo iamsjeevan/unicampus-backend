@@ -9,14 +9,15 @@ on:
       - 'feat/**'
       - 'fix/**'
       - 'chore/**'
-      - 'devops/**' # Added for devops branches
+      - 'devops/**'
   pull_request:
+    types: [opened, synchronize, reopened] # Analyze PRs
     branches:
       - main
 
 jobs:
-  build-lint-test-analyze: # Combined job for efficiency
-    name: Build, Lint, Test & Analyze
+  build-lint-test-analyze:
+    name: Build, Lint, Test & Analyze with SonarCloud
     runs-on: ubuntu-latest
 
     steps:
@@ -42,33 +43,30 @@ jobs:
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
       
       - name: Run Tests with Pytest (and generate coverage)
-        # This step will pass even if no tests are found initially.
-        # Create a 'tests' directory and add test files later (e.g., tests/test_example.py)
         run: |
           pytest --cov=app --cov-report=xml:coverage.xml --cov-report=term-missing || true 
-          # '|| true' makes the step pass if pytest exits with status 5 (no tests found)
           # Remove '|| true' once you have actual tests.
 
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master # Use the official SonarCloud action
+        uses: SonarSource/sonarcloud-github-action@master # Official SonarCloud action
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Provided by GitHub
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}    # Your secret from GitHub repository settings
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to decorate PRs
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}     # Your SonarCloud token from GitHub secrets
         with:
-          projectBaseDir: . # Or the subdirectory if your code is not at the root
+          projectBaseDir: . 
           args: >
             -Dsonar.organization=your-sonarcloud-organization-key
             -Dsonar.projectKey=your-sonarcloud-project-key
-            -Dsonar.python.coverage.reportPaths=coverage.xml 
-            # Add other Sonar properties if needed, e.g. -Dsonar.sources=app
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            # -Dsonar.sources=app # Optional: if you want to specify source directory
             # -Dsonar.verbose=true # For debugging SonarCloud issues
 
   build-and-push-docker-image:
-    name: Build and Push Docker Image
+    name: Build and Push Docker Image to GHCR
     runs-on: ubuntu-latest
-    needs: build-lint-test-analyze # Run only if the previous job succeeds
-    # Only run this step on pushes to main, or specific release/tag branches
-    if: github.ref == 'refs/heads/main' # Adjust as needed, e.g., for a 'develop' branch or tags
+    needs: build-lint-test-analyze # Ensure analysis is done first
+    # Only run this step on pushes/merges to main
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout code
@@ -78,8 +76,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }} # Your GitHub username or organization name
-          password: ${{ secrets.GITHUB_TOKEN }} # GITHUB_TOKEN has permissions to push to GHCR in the same repo
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -92,8 +90,5 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/unicampus-backend:latest
             ghcr.io/${{ github.repository_owner }}/unicampus-backend:${{ github.sha }}
-          # github.repository_owner is usually your GitHub username or org name
-          # Example tags: ghcr.io/yourusername/unicampus-backend:latest
-          #               ghcr.io/yourusername/unicampus-backend:a1b2c3d4 (commit SHA)
           cache-from: type=gha
           cache-to: type=gha,mode=max
