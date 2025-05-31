@@ -21,9 +21,10 @@ def create_app(config_class=Config):
 
     from .routes.auth_routes import auth_bp
     from .routes.user_routes import user_bp
-
+    from .routes.content_routes import content_bp # <-- ADD THIS IMPORT
     app.register_blueprint(auth_bp, url_prefix='/api/v1/auth')
     app.register_blueprint(user_bp, url_prefix='/api/v1/users')
+    app.register_blueprint(content_bp, url_prefix='/api/v1') 
 
     @app.route('/health', methods=['GET'])
     def health_check():

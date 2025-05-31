@@ -62,3 +62,25 @@ def update_current_user():
         # This branch should ideally not be hit if update_payload is validated and DB is responsive
         current_app.logger.error(f"/me PUT: Profile update failed unexpectedly for user ID: {current_user_id}")
         return jsonify({"status": "error", "message": "Profile update failed or no changes made"}), 400
+    
+@user_bp.route('/me/fees', methods=['GET'])
+@jwt_required()
+def get_user_fees_status():
+    current_user_id = get_jwt_identity() # We have the user context
+    # In a real scenario, you'd fetch this data based on current_user_id
+    # or it would be part of the main user document if scraped/synced.
+    # For now, it's a demo.
+    current_app.logger.info(f"Accessed GET /users/me/fees (demo) for user {current_user_id}")
+
+    # Placeholder data - this would ideally come from a dedicated fees scrape or admin input
+    demo_fees_status = {
+        "status": "Paid", # Could be "Due", "Partially Paid"
+        "amountDue": 0.00,
+        "dueDate": None, # Or an actual date string if due, e.g., "2024-07-15"
+        "lastPaymentDate": "2024-01-10",
+        "totalFees": 150000.00,
+        "paidAmount": 150000.00,
+        "paymentHistoryLink": "https://parents.msrit.edu/newparents/index.php?option=com_fees", # Example link
+        "remarks": "All dues cleared for the current academic year."
+    }
+    return jsonify({"status": "success", "data": demo_fees_status}), 200
