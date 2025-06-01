@@ -332,3 +332,37 @@ def update_post_route(post_id):
         return jsonify({"status": "error", "message": "An unexpected error occurred while updating the post."}), 500
 
 # ... (other routes: /posts/<postId>/vote, etc.)
+# app/routes/community_routes.py
+# ... (existing imports and routes for communities, posts, voting, editing posts) ...
+
+# DELETE /api/v1/posts/{postId} (Delete own post)
+@community_bp.route('/posts/<string:post_id>', methods=['DELETE'])
+@jwt_required()
+def delete_post_route(post_id):
+    current_user_id_str = get_jwt_identity()
+
+    try:
+        success = Post.delete_post(post_id, current_user_id_str)
+        if success:
+            current_app.logger.info(f"Post {post_id} deleted by user {current_user_id_str}")
+            return jsonify({"status": "success", "message": "Post and its comments deleted successfully."}), 200 # Or 204 No Content
+        else:
+            # This 'else' might be hit if Post.delete_post returns False without raising an error
+            # (e.g., post found but delete_one didn't affect any rows due to a concurrent modification or an issue).
+            # The ValueError and PermissionError from the model should be caught below.
+            current_app.logger.warning(f"Attempt to delete post {post_id} by {current_user_id_str} returned false from model without specific error.")
+            return jsonify({"status": "fail", "message": "Post could not be deleted or was not found."}), 404
+
+
+    except ValueError as ve: # Errors from model validation (e.g., post not found, invalid ID)
+        current_app.logger.warning(f"ValueError deleting post {post_id}: {str(ve)}")
+        status_code = 404 if "not found" in str(ve).lower() else 400
+        return jsonify({"status": "fail", "message": str(ve)}), status_code
+    except PermissionError as pe: # User not authorized
+        current_app.logger.warning(f"PermissionError deleting post {post_id} by user {current_user_id_str}: {str(pe)}")
+        return jsonify({"status": "fail", "message": str(pe)}), 403 # Forbidden
+    except Exception as e:
+        current_app.logger.error(f"Error deleting post {post_id}: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": "An unexpected error occurred while deleting the post."}), 500
+
+# ... (other routes)

@@ -303,3 +303,46 @@ class Post:
     # Placeholder for deleting (own post or admin/mod)
     # @staticmethod
     # def delete_post(post_id, user_id, user_role='member'): ...
+    @staticmethod
+    def delete_post(post_id_str, user_id_str): # user_role can be added later for admin/mod deletion
+        try:
+            post_id_obj = ObjectId(post_id_str)
+            user_id_obj = ObjectId(user_id_str)
+        except Exception:
+            raise ValueError("Invalid Post ID or User ID format.")
+
+        post = Post.get_collection().find_one({"_id": post_id_obj})
+        if not post:
+            raise ValueError("Post not found.") # Or return False/None for route to handle as 404
+
+        if post.get("author_id") != user_id_obj:
+            # Add role checks here later if admins/mods can delete
+            # e.g., if user_role == 'admin' or (user_role == 'moderator' and is_moderator_of_community(user_id, post.get('community_id')))
+            raise PermissionError("User is not authorized to delete this post.")
+
+        # 1. Delete all comments associated with this post
+        try:
+            comment_delete_result = Comment.get_collection().delete_many({"post_id": post_id_obj})
+            current_app.logger.info(f"Deleted {comment_delete_result.deleted_count} comments for post {post_id_str}")
+        except Exception as e:
+            current_app.logger.error(f"Error deleting comments for post {post_id_str}: {e}", exc_info=True)
+            # Decide if failure to delete comments should prevent post deletion.
+            # For now, we'll proceed with post deletion but log the error.
+            # In a transactional system, you'd roll back. MongoDB needs multi-document transactions for this.
+
+        # 2. Delete the post itself
+        delete_result = Post.get_collection().delete_one({"_id": post_id_obj, "author_id": user_id_obj})
+
+        if delete_result.deleted_count > 0:
+            # Optional: If you were storing post counts on the community, decrement it here.
+            # Community.get_collection().update_one(
+            #     {"_id": post.get("community_id")},
+            #     {"$inc": {"post_count": -1}} # Assuming a 'post_count' field exists on Community
+            # )
+            return True
+        else:
+            # This case should ideally not be hit if the initial checks pass
+            # and the author_id check in delete_one query matches.
+            # It could mean a race condition or an unexpected state.
+            current_app.logger.warning(f"Post {post_id_str} was found but delete operation by author {user_id_str} removed 0 documents.")
+            return False
