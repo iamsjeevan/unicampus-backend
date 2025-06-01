@@ -1,0 +1,17 @@
+{
+  "data": {
+    "comment": {
+      "author_id": "683c2cc89c8c284ebb0eb0c3",
+      "created_at": "2025-06-01T19:12:19.284705",
+      "downvotes": 0,
+      "id": "683ca61378e0d2b613c0809c",
+      "parent_comment_id": null,
+      "post_id": "683ca5f478e0d2b613c0809b",
+      "text": "This is the fresh comment we will be voting on!",
+      "updated_at": "2025-06-01T19:12:19.284707",
+      "upvotes": 0,
+      "user_vote": null
+    }
+  },
+  "status": "success"
+}
