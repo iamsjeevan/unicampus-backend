@@ -87,3 +87,24 @@ def get_academic_links():
         }
     ]
     return jsonify({"status": "success", "data": demo_links}), 200
+@content_bp.route('/app/info', methods=['GET'])
+def get_app_info():
+    current_app.logger.info("Accessed GET /app/info")
+    app_information = {
+        "appName": "UniCampus MSRIT",
+        "version": "1.0.0-alpha", # You can update this as your app evolves
+        "description": "Your comprehensive companion app for MSRIT.",
+        "developerInfo": {
+            "name": "S Jeevan & Shahbaaz Saleem", # Or your actual developer name/team
+            "contact": "iamsjeevan@gmail.com" # Example contact
+        },
+        "links": {
+            "privacyPolicy": "/privacy-policy", # Placeholder - you'd serve this page or link externally
+            "termsOfService": "/terms-of-service", # Placeholder
+            "feedbackEmail": "feedback@msrit.edu"
+        },
+        "lastUpdated": "2024-06-01" # Could be dynamic later
+    }
+    return jsonify({"status": "success", "data": app_information}), 200
+
+    
