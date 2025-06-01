@@ -5,13 +5,13 @@ name: UniCampus Backend CI/CD
 on:
   push:
     branches:
-      - main
-      - 'feat/**'
-      - 'fix/**'
-      - 'chore/**'
-      - 'devops/**'
+      - main        # Analyze and build/push on pushes to main
+      - 'feat/**'   # Analyze feature branches
+      - 'fix/**'    # Analyze fix branches
+      - 'chore/**'  # Analyze chore branches
+      - 'devops/**' # Analyze devops branches
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened] # Analyze PRs targeting main
     branches:
       - main
 
@@ -24,77 +24,82 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 
+          fetch-depth: 0  # SonarCloud needs full history for accurate blame/new code detection
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.11' # Or your project's Python version
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # Ensure tools for linting and testing are installed
           pip install flake8 pytest pytest-cov 
 
       - name: Lint with Flake8
         run: |
+          # Stop the build if there are Python syntax errors or undefined names
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit-zero treats all errors as warnings for the next check. Adjust as needed.
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
       
       - name: Run Tests with Pytest (and generate coverage)
         run: |
-          pytest --cov=app --cov-report=xml:coverage.xml --cov-report=term-missing || true 
-          # Remove '|| true' once you have actual tests.
+          # This command will pass even if no tests are found initially due to '|| true'.
+          # Create a 'tests' directory and add actual test files (e.g., tests/test_auth.py).
+          pytest --cov=app --cov-report=xml:coverage.xml --cov-report=term-missing || true
+          # IMPORTANT: Remove '|| true' once you have actual tests that are expected to pass.
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@master 
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.organization=iamsjeevan # CONFIRM THIS IS YOUR CORRECT SONARCLOUD ORG KEY
-            -Dsonar.projectKey=iamsjeevan_unicampus-backend # CONFIRM THIS IS YOUR CORRECT SONARCLOUD PROJECT KEY
-            -Dsonar.python.coverage.reportPaths=coverage.xml
-            # -Dsonar.sources=app
-            # -Dsonar.verbose=true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Automatically provided by GitHub, required for PR decoration
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}     # Your SonarCloud analysis token from GitHub secrets
+        # No 'with.args' needed here as configuration is primarily in sonar-project.properties
+        # The action will automatically detect and use sonar-project.properties in the projectBaseDir.
+        # If you need to override a specific property or pass something extra, you can add 'with.args'
+        # with:
+        #   args: >
+        #     -Dsonar.verbose=true # Example override or additional argument
 
   build-and-push-docker-image:
     name: Build and Push Multi-Arch Docker Image to GHCR
     runs-on: ubuntu-latest
-    needs: build-lint-test-analyze
+    needs: build-lint-test-analyze # Run only if the previous job succeeds
+    # Only run this step on pushes/merges to main
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
-    permissions:
-      contents: read
-      packages: write
+    permissions: # Grant necessary permissions to the GITHUB_TOKEN for this job
+      contents: read   # To checkout the repo
+      packages: write  # To push to GitHub Packages (GHCR)
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up QEMU (for multi-architecture builds) # <--- NEW STEP
+      - name: Set up QEMU (for multi-architecture builds)
         uses: docker/setup-qemu-action@v3
 
-      - name: Set up Docker Buildx # <--- Ensure this is present
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ github.actor }} # Your GitHub username or organization name
+          password: ${{ secrets.GITHUB_TOKEN }} # GITHUB_TOKEN has permissions due to the 'permissions' block
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64 # <--- KEY CHANGE: Build for both platforms
-          tags: |
+          context: . # Specifies the build context is the current directory
+          push: true # Actually push the image
+          platforms: linux/amd64,linux/arm64 # Build for both AMD64 and ARM64
+          tags: | # Define tags for the image
             ghcr.io/${{ github.repository_owner }}/unicampus-backend:latest
             ghcr.io/${{ github.repository_owner }}/unicampus-backend:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha # Enable build cache from GitHub Actions cache
+          cache-to: type=gha,mode=max # Enable build cache to GitHub Actions cache
