@@ -211,3 +211,40 @@ class Post:
             "posts": posts_list, "total": total_posts, "page": page,
             "per_page": per_page, "pages": (total_posts + per_page - 1) // per_page if per_page > 0 else 0
         }
+    # app/models/post.py
+# ... (previous Post model code) ...
+
+    @staticmethod
+    def delete_post(post_id_str, user_id_str): 
+        try:
+            post_id_obj = ObjectId(post_id_str)
+            user_id_obj = ObjectId(user_id_str)
+        except bson_errors.InvalidId: # Use bson_errors
+            raise ValueError("Invalid Post ID or User ID format for delete.")
+
+        post = Post.get_collection().find_one({"_id": post_id_obj})
+        if not post:
+            raise ValueError("Post not found to delete.")
+
+        if post.get("author_id") != user_id_obj:
+            raise PermissionError("User is not authorized to delete this post.")
+
+        # 1. Delete all comments associated with this post
+        try:
+            # Use the Comment model or direct collection access
+            comment_delete_result = mongo.db.comments.delete_many({"post_id": post_id_obj}) # Direct access
+            # OR if Comment model has a static method for this:
+            # comment_delete_result = Comment.delete_all_for_post(post_id_obj) 
+            current_app.logger.info(f"Cascaded delete: {comment_delete_result.deleted_count} comments for post {post_id_str}")
+        except Exception as e:
+            current_app.logger.error(f"Error during cascading delete of comments for post {post_id_str}: {e}", exc_info=True)
+
+        # 2. Delete the post itself
+        delete_result = Post.get_collection().delete_one({"_id": post_id_obj, "author_id": user_id_obj})
+
+        if delete_result.deleted_count > 0:
+            return True
+        else:
+            current_app.logger.warning(f"Post {post_id_str} delete operation by author {user_id_str} affected 0 documents, though post was initially found.")
+            return False
+# ... (rest of Post model)
