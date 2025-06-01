@@ -1,0 +1,24 @@
+{
+  "data": [
+    {
+      "author_id": "683c2cc89c8c284ebb0eb0c3",
+      "created_at": "2025-06-01T19:12:19.284000",
+      "downvotes": 0,
+      "id": "683ca61378e0d2b613c0809c",
+      "parent_comment_id": null,
+      "post_id": "683ca5f478e0d2b613c0809b",
+      "text": "This is the fresh comment we will be voting on!",
+      "updated_at": "2025-06-01T19:12:43.169000",
+      "upvotes": 1,
+      "user_vote": "up"
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "per_page": 20,
+    "sort_by": "newest",
+    "total_items": 1,
+    "total_pages": 1
+  },
+  "status": "success"
+}
