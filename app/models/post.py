@@ -218,3 +218,88 @@ class Post:
             "posts": posts_list, "total": total_posts, "page": page,
             "per_page": per_page, "pages": (total_posts + per_page - 1) // per_page if per_page > 0 else 0
         }
+
+    @staticmethod
+    def update_post(post_id_str, author_id_str, update_data):
+        try:
+            post_id_obj = ObjectId(post_id_str)
+            author_id_obj = ObjectId(author_id_str)
+        except Exception:
+            raise ValueError("Invalid Post ID or Author ID format.")
+
+        post = Post.get_collection().find_one({"_id": post_id_obj})
+        if not post:
+            raise ValueError("Post not found.")
+
+        if post.get("author_id") != author_id_obj:
+            # In a real app, admins or community moderators might also be able to edit.
+            # For now, only the author can edit.
+            raise PermissionError("User is not authorized to edit this post.")
+
+        allowed_to_update = {}
+        if "title" in update_data and update_data["title"] and len(update_data["title"].strip()) >= 3:
+            allowed_to_update["title"] = update_data["title"].strip()
+        elif "title" in update_data and (not update_data["title"] or len(update_data["title"].strip()) < 3) :
+             raise ValueError("Post title must be at least 3 characters long if provided for update.")
+
+
+        # Assuming content_type cannot be changed.
+        # If it could, you'd need to validate the new content against the new type.
+        current_content_type = post.get("content_type")
+
+        if current_content_type == "text":
+            if "content_text" in update_data:
+                if not update_data["content_text"] or len(update_data["content_text"].strip()) == 0:
+                    raise ValueError("Text content cannot be empty for a text post if provided for update.")
+                allowed_to_update["content_text"] = update_data["content_text"].strip()
+        elif current_content_type == "image":
+            if "image_url" in update_data: # Allow updating image_url
+                if not update_data["image_url"]:
+                     raise ValueError("Image URL cannot be empty if provided for update.")
+                allowed_to_update["image_url"] = update_data["image_url"]
+            if "content_text" in update_data: # Image posts can also have descriptive text
+                allowed_to_update["content_text"] = update_data["content_text"].strip() if update_data["content_text"] else None
+        elif current_content_type == "link":
+            if "link_url" in update_data: # Allow updating link_url
+                if not update_data["link_url"]:
+                    raise ValueError("Link URL cannot be empty if provided for update.")
+                allowed_to_update["link_url"] = update_data["link_url"]
+            if "content_text" in update_data: # Link posts can also have descriptive text
+                allowed_to_update["content_text"] = update_data["content_text"].strip() if update_data["content_text"] else None
+        
+        if "tags" in update_data and isinstance(update_data["tags"], list):
+            allowed_to_update["tags"] = [tag.strip().lower() for tag in update_data["tags"] if tag.strip()]
+        
+        if not allowed_to_update:
+            # No valid fields to update were provided, or no changes from original
+            # For simplicity, we can just say no changes, or raise an error.
+            # Let's return the current post if no valid fields are provided.
+            # A more sophisticated approach might check if allowed_to_update actually differs from current post data.
+            return {"message": "No valid fields provided for update or no changes made.", "post": Post.to_dict(post, author_id_str)}
+
+
+        allowed_to_update["updated_at"] = datetime.utcnow()
+        # last_activity_at is usually not updated on edit unless it's a significant interaction
+
+        result = Post.get_collection().update_one(
+            {"_id": post_id_obj, "author_id": author_id_obj}, # Ensure author matches again for safety
+            {"$set": allowed_to_update}
+        )
+
+        if result.modified_count > 0:
+            updated_post_doc = Post.get_collection().find_one({"_id": post_id_obj})
+            return {"message": "Post updated successfully.", "post": Post.to_dict(updated_post_doc, author_id_str)}
+        elif result.matched_count > 0 and not allowed_to_update: # Matched but no fields were actually different to update
+            return {"message": "No changes detected in the provided data.", "post": Post.to_dict(post, author_id_str)}
+        else: # Matched but no modification (e.g., submitted same data), or didn't match (should have been caught by initial find)
+            # This case implies that even though the document was found and authorized,
+            # the update operation with $set didn't change anything (e.g., data was identical)
+            # or something went wrong with the update itself not applying despite a match.
+            current_app.logger.warning(f"Post update for {post_id_str} matched but modified_count was 0. Data: {allowed_to_update}")
+            # Re-fetch and return the current state.
+            current_post_doc = Post.get_collection().find_one({"_id": post_id_obj})
+            return {"message": "Post matched but no fields were modified by the update.", "post": Post.to_dict(current_post_doc, author_id_str)}
+
+    # Placeholder for deleting (own post or admin/mod)
+    # @staticmethod
+    # def delete_post(post_id, user_id, user_role='member'): ...
