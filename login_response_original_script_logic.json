@@ -1,0 +1,23 @@
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc0ODc3NDA4OCwianRpIjoiMjUyOGUyMmEtZDgyYS00OGM5LTk4NTItODdhYzY1MmEzMjg2IiwidHlwZSI6ImFjY2VzcyIsInN1YiI6IjY4M2MyY2M4OWM4YzI4NGViYjBlYjBjMyIsIm5iZiI6MTc0ODc3NDA4OCwiZXhwIjoxNzQ4Nzc1ODg4fQ.iyEbioyTHfw38uKcDYEfxl_ddejmCTgQzQnb8orqI8w",
+  "data": {
+    "user": {
+      "avatar": null,
+      "collegeProfile": {
+        "department": "Computer Science & Engineering",
+        "officialName": "S JEEVAN",
+        "section": "C",
+        "semester": 6,
+        "usn": "1MS22CS118"
+      },
+      "email": "1ms22cs118@unicampus.app",
+      "id": "683c2cc89c8c284ebb0eb0c3",
+      "mostRecentCGPA": 7.81,
+      "name": "S JEEVAN",
+      "role": "student",
+      "usn": "1MS22CS118"
+    }
+  },
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc0ODc3NDA4OCwianRpIjoiZTdkZWRmNWMtMzZiZS00YjQzLTkwOWItZmNhMWQ2YjU0OTcyIiwidHlwZSI6InJlZnJlc2giLCJzdWIiOiI2ODNjMmNjODljOGMyODRlYmIwZWIwYzMiLCJuYmYiOjE3NDg3NzQwODgsImV4cCI6MTc0OTM3ODg4OH0.H-phn7VQy5XdsPymv7W9i4yXc4GScEGpxjVG5Kql_M0",
+  "status": "success"
+}
