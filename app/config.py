@@ -6,7 +6,7 @@ load_dotenv()
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'a_very_strong_default_secret_key'
-    MONGO_URI = os.environ.get('MONGO_URI') or 'mongodb://localhost:27017/unicampus_dev_db'
+    MONGO_URI = os.environ.get('MONGO_URI')
     
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'a_super_secret_jwt_key'
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES_MINUTES', 30)))
