@@ -286,3 +286,49 @@ def get_comments_for_post_route(post_id):
     except Exception as e:
         current_app.logger.error(f"Error fetching comments for post {post_id}: {str(e)}", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to retrieve comments."}), 500
+# app/routes/community_routes.py
+# ... (existing imports and routes for communities, posts, voting) ...
+
+# PUT /api/v1/posts/{postId} (Edit own post)
+@community_bp.route('/posts/<string:post_id>', methods=['PUT'])
+@jwt_required()
+def update_post_route(post_id):
+    current_user_id_str = get_jwt_identity()
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"status": "fail", "message": "Request body cannot be empty."}), 400
+
+    # Fields that can be updated by the user
+    update_payload = {}
+    allowed_fields = ["title", "content_text", "image_url", "link_url", "tags"]
+    for field in allowed_fields:
+        if field in data: # Only include fields if they are present in the request
+            update_payload[field] = data[field]
+    
+    if not update_payload:
+        return jsonify({"status": "fail", "message": "No updatable fields provided."}), 400
+
+    try:
+        result = Post.update_post(post_id, current_user_id_str, update_payload)
+        
+        # The model method now returns a dict with "message" and "post"
+        if "post" in result:
+             current_app.logger.info(f"Post {post_id} updated by user {current_user_id_str}. Message: {result['message']}")
+             return jsonify({"status": "success", "message": result["message"], "data": {"post": result["post"]}}), 200
+        else: # Should not happen if model logic is correct
+            current_app.logger.error(f"Post update for {post_id} by {current_user_id_str} returned unexpected result: {result}")
+            return jsonify({"status": "error", "message": "An unexpected issue occurred during post update."}), 500
+
+    except ValueError as ve: # Errors from model validation (e.g., post not found, invalid data)
+        current_app.logger.warning(f"ValueError updating post {post_id}: {str(ve)}")
+        status_code = 404 if "not found" in str(ve).lower() else 400
+        return jsonify({"status": "fail", "message": str(ve)}), status_code
+    except PermissionError as pe: # User not authorized
+        current_app.logger.warning(f"PermissionError updating post {post_id} by user {current_user_id_str}: {str(pe)}")
+        return jsonify({"status": "fail", "message": str(pe)}), 403 # Forbidden
+    except Exception as e:
+        current_app.logger.error(f"Error updating post {post_id}: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": "An unexpected error occurred while updating the post."}), 500
+
+# ... (other routes: /posts/<postId>/vote, etc.)
