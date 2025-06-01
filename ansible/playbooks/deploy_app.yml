@@ -1,0 +1,66 @@
+# ansible/playbooks/deploy_app.yml
+---
+- name: Deploy UniCampus Application Locally with Docker
+  hosts: local_docker_host
+  become: no 
+
+  vars:
+    app_name: "unicampus-backend-ansible"
+    docker_image_repo: "ghcr.io/iamsjeevan/unicampus-backend" # ENSURE 'iamsjeevan' is your GitHub username/org
+    docker_image_tag: "latest"
+    
+    container_internal_port: 8000
+    host_mapped_port: 5001
+
+    # --- MODIFIED PATH using playbook_dir ---
+    # playbook_dir is .../unicampus-backend/ansible/playbooks
+    # ../../.env navigates up two levels to .../unicampus-backend/.env
+    env_file_on_control_node: "{{ playbook_dir }}/../../.env"
+
+  tasks:
+    - name: Debug env_file_on_control_node path
+      ansible.builtin.debug:
+        msg: "Playbook is trying to find .env file at: {{ env_file_on_control_node }}"
+      delegate_to: localhost # Run this on the control node
+
+    - name: Verify .env file exists on control node
+      ansible.builtin.stat:
+        path: "{{ env_file_on_control_node }}"
+      register: env_file_check
+      delegate_to: localhost 
+
+    - name: Fail if .env file not found
+      ansible.builtin.fail:
+        msg: ".env file not found at resolved path '{{ env_file_on_control_node }}'. This is required for local deployment. Please ensure it exists at the project root."
+      when: not env_file_check.stat.exists
+
+    - name: Log in to GHCR (Optional)
+      community.docker.docker_login:
+        registry: ghcr.io
+        username: "{{ lookup('env', 'GHCR_USERNAME') | default(ansible_user_id | default(''), true) }}"
+        password: "{{ lookup('env', 'GHCR_TOKEN') | default('', true) }}"
+      when: lookup('env', 'GHCR_TOKEN') is defined and lookup('env', 'GHCR_TOKEN') | length > 0
+      ignore_errors: yes # Don't fail if login fails (e.g. already logged in or public package)
+
+    - name: Pull the application Docker image from GHCR
+      community.docker.docker_image:
+        name: "{{ docker_image_repo }}:{{ docker_image_tag }}"
+        source: pull
+
+    - name: Stop and remove any existing container with the same name
+      community.docker.docker_container:
+        name: "{{ app_name }}"
+        state: absent
+
+    - name: Run the application container
+      community.docker.docker_container:
+        name: "{{ app_name }}"
+        image: "{{ docker_image_repo }}:{{ docker_image_tag }}"
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "{{ host_mapped_port }}:{{ container_internal_port }}"
+        env_file: "{{ env_file_on_control_node }}"
+        # Ensure MONGO_URI in your root .env file is set correctly, e.g.:
+        # MONGO_URI=mongodb://host.docker.internal:27017/unicampus_db (for Docker Desktop)
+        # MONGO_URI=mongodb://172.17.0.1:27017/unicampus_db (for Docker on Linux, if 172.17.0.1 is docker0 IP)
