@@ -60,8 +60,8 @@ jobs:
         with:
           projectBaseDir: . # Assumes Sonar analysis runs from the root of the checkout
           args: > # Multi-line arguments for the sonar-scanner
-            -Dsonar.organization=YOUR_SONARCLOUD_ORGANIZATION_KEY
-            -Dsonar.projectKey=YOUR_SONARCLOUD_PROJECT_KEY
+            -Dsonar.organization=iamsjeevan
+            -Dsonar.projectKey=iamsjeevan_unicampus-backend
             -Dsonar.python.coverage.reportPaths=coverage.xml
             # -Dsonar.sources=app  # Optional: Uncomment if your source code is primarily in the 'app' directory
             # -Dsonar.tests=tests # Optional: Uncomment if your tests are in a 'tests' directory
