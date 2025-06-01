@@ -24,7 +24,6 @@ def create_app(config_class=Config):
     from .routes.user_routes import user_bp
     from .routes.content_routes import content_bp # <-- UNCOMMENT THIS IMPORT
     from .routes.academic_routes import academic_bp
-
     app.register_blueprint(auth_bp, url_prefix='/api/v1/auth')
     app.register_blueprint(user_bp, url_prefix='/api/v1/users')
     app.register_blueprint(content_bp, url_prefix='/api/v1') # <-- UNCOMMENT THIS REGISTRATION
