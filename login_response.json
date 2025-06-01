@@ -1,5 +1,5 @@
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc0ODc5NjgxOSwianRpIjoiMzNmOTNiYjYtOThmNS00ZmU2LWEyMGQtNjBlMTUzNDgxM2NlIiwidHlwZSI6ImFjY2VzcyIsInN1YiI6IjY4M2MyY2M4OWM4YzI4NGViYjBlYjBjMyIsIm5iZiI6MTc0ODc5NjgxOSwiZXhwIjoxNzQ4Nzk4NjE5fQ.VWqKAmTB1KPdHD-SU6LpSuKmHbvy71J-_IbdbYtdsKE",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc0ODgwMzEyOCwianRpIjoiYmQwNjNhYTEtZjFlYy00ZDZhLWE3NWMtNjA2MWI5MWM0ODhhIiwidHlwZSI6ImFjY2VzcyIsInN1YiI6IjY4M2MyY2M4OWM4YzI4NGViYjBlYjBjMyIsIm5iZiI6MTc0ODgwMzEyOCwiZXhwIjoxNzQ4ODA0OTI4fQ.atn8Z7GEWWpGV6xfOAkbUHTReVXnF5-dWsm7RxbbPAE",
   "data": {
     "user": {
       "avatar": "updated_avatar_path.jpg",
@@ -18,6 +18,6 @@
       "usn": "1MS22CS118"
     }
   },
-  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc0ODc5NjgxOSwianRpIjoiMWZlYWMxNTktZTU5Ni00MjFlLTg2YmItZjYxNDc3YTYyM2ZkIiwidHlwZSI6InJlZnJlc2giLCJzdWIiOiI2ODNjMmNjODljOGMyODRlYmIwZWIwYzMiLCJuYmYiOjE3NDg3OTY4MTksImV4cCI6MTc0OTQwMTYxOX0.N0ag4je9cJyWQlkvY_etHMq2ivCOa_bnVhXK8oSCppI",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmcmVzaCI6ZmFsc2UsImlhdCI6MTc0ODgwMzEyOCwianRpIjoiYjU4NmU4ZDQtZjI1YS00YzBiLThkMDctZjVhODU3M2MzODAyIiwidHlwZSI6InJlZnJlc2giLCJzdWIiOiI2ODNjMmNjODljOGMyODRlYmIwZWIwYzMiLCJuYmYiOjE3NDg4MDMxMjgsImV4cCI6MTc0OTQwNzkyOH0.t8gQ5_Op8yTcuCcoIo5pTFnwcNSoS_CA-cJYHidoHfQ",
   "status": "success"
 }

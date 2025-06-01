@@ -1,0 +1,23 @@
+{
+  "data": {
+    "community": {
+      "banner_image_url": null,
+      "created_at": "2025-06-01T18:39:12.478203",
+      "created_by": "683c2cc89c8c284ebb0eb0c3",
+      "description": "A community to rigorously test post voting.",
+      "icon_url": null,
+      "id": "683c9e50cc1a082b63ff4295",
+      "member_count": 1,
+      "name": "DevOps Voting Arena",
+      "rules": [],
+      "slug": "devops-voting-arena",
+      "tags": [
+        "testing",
+        "devops",
+        "voting"
+      ],
+      "updated_at": "2025-06-01T18:39:12.478204"
+    }
+  },
+  "status": "success"
+}
