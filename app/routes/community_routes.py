@@ -4,6 +4,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models.community import Community
 from app.models.post import Post 
 from bson import ObjectId
+from app.models.comment import Comment # <-- IMPORT Comment MODEL
 
 community_bp = Blueprint('community_bp', __name__)
 
@@ -222,3 +223,66 @@ def vote_on_post_route(post_id):
     except Exception as e:
         current_app.logger.error(f"Error voting on post {post_id}: {str(e)}", exc_info=True)
         return jsonify({"status": "error", "message": "An unexpected error occurred while voting."}), 500
+@community_bp.route('/posts/<string:post_id>/comments', methods=['POST'])
+@jwt_required()
+def create_comment_on_post_route(post_id):
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+
+    text = data.get('text')
+    parent_comment_id = data.get('parent_comment_id') # For replies, optional
+
+    if not text or not text.strip():
+        return jsonify({"status": "fail", "message": "Comment text cannot be empty."}), 400
+
+    try:
+        # Post ID validation and existence check is handled within Comment.create_comment
+        new_comment_dict = Comment.create_comment(
+            post_id=post_id,
+            author_id=current_user_id,
+            text=text,
+            parent_comment_id=parent_comment_id
+        )
+        current_app.logger.info(f"Comment created on post {post_id} by user {current_user_id}")
+        return jsonify({"status": "success", "data": {"comment": new_comment_dict}}), 201
+    except ValueError as ve: # Catch errors from model (e.g., post not found, text too long)
+        current_app.logger.warning(f"ValueError creating comment on post {post_id}: {str(ve)}")
+        status_code = 404 if "not found" in str(ve).lower() else 400
+        return jsonify({"status": "fail", "message": str(ve)}), status_code
+    except Exception as e:
+        current_app.logger.error(f"Error creating comment on post {post_id}: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": "An unexpected error occurred while creating the comment."}), 500
+
+# GET /api/v1/posts/<postId>/comments (List comments for a post)
+@community_bp.route('/posts/<string:post_id>/comments', methods=['GET'])
+@jwt_required() # Or public if desired
+def get_comments_for_post_route(post_id):
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('limit', 20, type=int) # Default 20 comments
+        sort_by = request.args.get('sortBy', 'newest', type=str).lower() # 'newest', 'oldest'
+
+        if page < 1: page = 1
+        if per_page < 1: per_page = 1
+        if per_page > 100: per_page = 100
+        if sort_by not in ['newest', 'oldest']: sort_by = 'newest'
+        
+        # Post ID validation happens in the model method
+        result = Comment.get_comments_for_post(post_id_str=post_id, page=page, per_page=per_page, sort_by=sort_by)
+        
+        return jsonify({
+            "status": "success",
+            "data": result['comments'],
+            "pagination": {
+                "total_items": result['total'],
+                "total_pages": result['pages'],
+                "current_page": result['page'],
+                "per_page": result['per_page'],
+                "sort_by": sort_by
+            }
+        }), 200
+    except ValueError as ve: # Catch errors like invalid Post ID from model
+        return jsonify({"status": "fail", "message": str(ve)}), 400
+    except Exception as e:
+        current_app.logger.error(f"Error fetching comments for post {post_id}: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed to retrieve comments."}), 500
