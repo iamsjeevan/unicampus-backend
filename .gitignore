@@ -1,16 +1,32 @@
+# .gitignore (ensure these are present or adapted)
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.env
-venv/
-env/
-.DS_Store
+*.py[cod]
+*$py.class
+flask_service/venv/ # If you were to create a venv inside flask_service
+venv/               # If venv is at the root (common)
+instance/           # If specific to Flask and you don't want to commit local instance data
+flask_service/instance/ 
 
-# IDE
+# Environment
+.env
+.flaskenv
+flask_service/.env # If you had a service-specific one
+flask_service/venv
+
+# Uploads (if you store them locally and don't commit)
+uploads/
+flask_service/uploads/
+
+# IDE / System
+.DS_Store
 .idea/
 .vscode/
 
-# Instance folder (if used for local DBs, etc.)
-instance/
+# Other common ignores
+*.log
+*.sqlite3
+*. Rproj
+*.swp
+*.swo
+local_settings.py

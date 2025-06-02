@@ -60,7 +60,7 @@ curl -s -X POST "$BASE_URL/communities" \
 -H "Authorization: Bearer $ACCESS_TOKEN" \
 -H "Content-Type: application/json" \
 --data '{
-    "name": "API Test Community - Scripted",
+    "name": "API Test Community1 - Scripted",
     "description": "A community created by the API test script.",
     "tags": ["scripted-test", "api-testing"]
 }' | tee community_response.json > /dev/null

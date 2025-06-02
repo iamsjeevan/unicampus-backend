@@ -1,31 +1,29 @@
-# docker-compose.yml
-version: '3.8'
-
 services:
-  web:
-    build: . # Build the image from the Dockerfile in the current directory
-    container_name: unicampus_flask_app
+  flask_app:
+    build:
+      context: ./flask_service
+      dockerfile: Dockerfile
+    container_name: unicampus_flask_service
     ports:
-      - "5000:8000" # Map host port 5000 to container port 8000 (where Gunicorn runs)
+      - "5000:8000"
     volumes:
-      - .:/app    # Mount current directory into /app in container for live code changes
-                  # For production, you typically wouldn't mount the code like this after building.
+      - ./flask_service:/app
     env_file:
-      - .env      # Load environment variables from .env file
+      - .env
     environment:
-      - FLASK_ENV=development # Override FLASK_ENV for local development
-      - FLASK_DEBUG=1         # Enable Flask debug mode for local development
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
     depends_on:
       - mongo
-    command: ["flask", "run", "--host=0.0.0.0", "--port=8000"] # Override CMD for dev: use Flask dev server
+    command: ["flask", "run", "--host=0.0.0.0", "--port=8000"]
 
   mongo:
-    image: mongo:latest # Use official MongoDB image
+    image: mongo:latest
     container_name: unicampus_mongo_db
     ports:
-      - "27017:27017" # Map host port 27017 to container port 27017
+      - "27017:27017"
     volumes:
-      - mongo_data:/data/db # Persist MongoDB data
+      - mongo_data:/data/db
 
 volumes:
-  mongo_data: # Defines a named volume for MongoDB data persistence
+  mongo_data:
