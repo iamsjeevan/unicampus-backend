@@ -1,35 +1,51 @@
 // node_service/src/routes/proxyAuthRoutes.js
 const express = require('express');
 const axios = require('axios');
+const forwardAuthHeader = require('../middleware/forwardAuthHeader');
 const router = express.Router();
 
-// FLASK_API_BASE_URL should be like 'http://flask_service:8000/api/v1' from .env
 const FLASK_AUTH_URL = `${process.env.FLASK_API_BASE_URL}/auth`;
 
-router.post('/login/student', async (req, res, next) => {
+const handleProxy = async (req, res, next, method, flaskEndpoint, data = null) => {
     try {
-        console.log(`Node Service: Proxying login request for USN ${req.body.usn} to Flask...`);
-        const flaskResponse = await axios.post(`${FLASK_AUTH_URL}/login/student`, req.body, {
-            headers: {
-                'Content-Type': 'application/json'
-                // Forward any other relevant headers if needed, but typically not for login
-            }
-        });
-        console.log(`Node Service: Received response from Flask login, status: ${flaskResponse.status}`);
+        console.log(`Node: Proxying ${method} ${req.path} to Flask: ${flaskEndpoint}`);
+        const axiosConfig = {
+            method: method,
+            url: flaskEndpoint,
+            headers: req.flaskHeaders, // Forwarded by middleware
+        };
+        if (data) {
+            axiosConfig.data = data;
+        }
+
+        const flaskResponse = await axios(axiosConfig);
+        console.log(`Node: Flask response for ${req.path} - Status: ${flaskResponse.status}`);
         res.status(flaskResponse.status).json(flaskResponse.data);
     } catch (error) {
-        console.error("Node Service: Error proxying login to Flask:", error.message);
+        console.error(`Node: Error proxying ${req.path} to Flask:`, error.message);
         if (error.response) {
-            // Forward the error response from Flask
             console.error("Flask Error Data:", error.response.data);
             res.status(error.response.status).json(error.response.data);
         } else {
-            // Network error or other issue before getting a response from Flask
-            res.status(500).json({ status: 'error', message: 'Failed to connect to authentication service.' });
+            res.status(502).json({ status: 'error', message: 'Bad gateway to backend service.' }); // 502 for network/unreachable
         }
     }
+};
+
+// Student Login
+router.post('/login/student', forwardAuthHeader, (req, res, next) => {
+    handleProxy(req, res, next, 'post', `${FLASK_AUTH_URL}/login/student`, req.body);
 });
 
-// You can add other auth proxy routes here later (refresh, logout)
+// Refresh Token
+router.post('/refresh-token', forwardAuthHeader, (req, res, next) => {
+    // Refresh token itself is in req.flaskHeaders.Authorization
+    handleProxy(req, res, next, 'post', `${FLASK_AUTH_URL}/refresh-token`);
+});
+
+// Logout
+router.post('/logout', forwardAuthHeader, (req, res, next) => {
+    handleProxy(req, res, next, 'post', `${FLASK_AUTH_URL}/logout`);
+});
 
 module.exports = router;
