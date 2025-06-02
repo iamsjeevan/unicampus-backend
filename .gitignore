@@ -30,3 +30,20 @@ flask_service/uploads/
 *.swp
 *.swo
 local_settings.py
+node_modules
+# ... existing ignores ...
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json # If you commit package.json and let CI do clean installs
+# Or, if you commit package-lock.json, then you might not ignore it
+
+# Service-specific .env files if you don't want to commit examples
+# flask_service/.env
+# node_service/.env # (You might commit a .env.example instead)
+
+# Uploads for Node service
+node_service/uploads/

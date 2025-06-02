@@ -1,3 +1,4 @@
+# unicampus-backend/docker-compose.yml
 services:
   flask_app:
     build:
@@ -5,17 +6,36 @@ services:
       dockerfile: Dockerfile
     container_name: unicampus_flask_service
     ports:
-      - "5000:8000"
+      - "5000:8000" 
     volumes:
-      - ./flask_service:/app
+      - ./flask_service:/app 
     env_file:
-      - .env
+      - .env # Root .env for shared or Flask-specific vars
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=1
     depends_on:
       - mongo
     command: ["flask", "run", "--host=0.0.0.0", "--port=8000"]
+
+  node_app: # NEW NODE SERVICE
+    build:
+      context: ./node_service
+      dockerfile: Dockerfile
+    container_name: unicampus_node_service
+    ports:
+      - "3001:3001" # Host port 3001 maps to container port 3001 (Node app's PORT)
+    volumes:
+      - ./node_service:/usr/src/app # Mount for live reload with nodemon
+      - /usr/src/app/node_modules # Important: Don't mount over node_modules
+    env_file:
+      - ./node_service/.env # Load Node service specific .env
+    environment:
+      - NODE_ENV=development # Override for dev
+    depends_on:
+      - mongo # If Resources feature uses it
+      - flask_app # Node app depends on Flask app being up to proxy calls
+    command: ["npm", "run", "dev"] # Use nodemon for development
 
   mongo:
     image: mongo:latest
