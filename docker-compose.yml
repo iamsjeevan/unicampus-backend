@@ -10,7 +10,7 @@ services:
     volumes:
       - ./flask_service:/app 
     env_file:
-      - .env # Root .env for shared or Flask-specific vars
+      - .env 
     environment:
       - FLASK_ENV=development
       - FLASK_DEBUG=1
