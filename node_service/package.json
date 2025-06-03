@@ -20,13 +20,9 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.15.1",
     "multer": "^2.0.0",
-<<<<<<< HEAD
     "nodemon": "^3.1.10",
     "prettier": "^3.5.3",
     "supertest": "^7.1.1",
-=======
-    "dotenv": "^16.5.0",
->>>>>>> 7c26241b61ef9f7725ab33a65be5515c2bbb5623
     "uuid": "^11.1.0"
   },
   "devDependencies": {
