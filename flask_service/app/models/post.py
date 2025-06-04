@@ -5,6 +5,7 @@ from bson import ObjectId, errors as bson_errors
 from app.models.community import Community 
 from flask import current_app
 from app.models.comment import Comment 
+from app.models.user import User # <--- ADD THIS IMPORT LINE
 
 class Post:
     @staticmethod

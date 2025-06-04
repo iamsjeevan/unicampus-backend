@@ -3,6 +3,7 @@ from app import mongo
 from datetime import datetime
 from bson import ObjectId, errors as bson_errors # Import bson_errors
 from flask import current_app
+from app.models.user import User # <--- ADD THIS IMPORT LINE
 
 class Comment:
     MAX_COMMENT_LENGTH = 2000 # Define as a class constant
