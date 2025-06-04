@@ -1,0 +1,65 @@
+# .github/workflows/cd.yml
+
+name: UniCampus Backend CD
+
+on:
+  workflow_run:
+    workflows: ["UniCampus Backend CI/CD"] # Must match the 'name' of your ci.yml workflow
+    types:
+      - completed
+    branches:
+      - main
+
+jobs:
+  deploy_to_ec2:
+    name: Deploy to EC2 via Ansible
+    runs-on: ubuntu-latest
+    # Only run if the triggering CI workflow (specifically its run on 'main') was successful
+    if: github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Checkout Code from the triggering commit
+        uses: actions/checkout@v4
+        with:
+          # This checkouts out the specific commit that successfully passed CI and triggered this CD.
+          # This ensures you deploy the exact code that was tested and built.
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Python (for Ansible)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9' # Ansible Core supports various Python 3 versions
+
+      - name: Install Ansible
+        run: pip install ansible-core # Or 'ansible' for the full package
+
+      - name: Configure SSH Key for Ansible
+        env:
+          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${EC2_SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa_ansible_ec2
+          chmod 600 ~/.ssh/id_rsa_ansible_ec2
+          # Add EC2 host key to known_hosts to avoid interactive prompt
+          # This assumes your EC2_HOST_IP secret is just the IP/DNS, not user@host
+          ssh-keyscan -H ${{ secrets.EC2_HOST_IP }} >> ~/.ssh/known_hosts
+
+
+      - name: Create Ansible Inventory File
+        run: |
+          echo "[ec2_instances]" > inventory.ini
+          echo "${{ secrets.EC2_HOST_IP }} ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/id_rsa_ansible_ec2" >> inventory.ini
+          # Optional: if you still need to disable StrictHostKeyChecking, though ssh-keyscan is preferred
+          # echo "[ec2_instances:vars]" >> inventory.ini
+          # echo "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" >> inventory.ini
+
+      - name: Run Ansible Playbook
+        env:
+          # This GITHUB_PAT is used by the Ansible playbook ON THE EC2 INSTANCE to clone the repo
+          ANSIBLE_EC2_GITHUB_PAT: ${{ secrets.EC2_GITHUB_PAT }}
+        run: |
+          ansible-playbook -i inventory.ini deploy-ec2.yml \
+            --extra-vars "GITHUB_PAT=${ANSIBLE_EC2_GITHUB_PAT}" \
+            -v
+          # Ensure your Ansible playbook is named deploy-ec2.yml and is at the root of the repo
+          # (or adjust the path: e.g., ansible/deploy-ec2.yml).

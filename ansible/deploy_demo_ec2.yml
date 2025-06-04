@@ -1,0 +1,97 @@
+---
+- name: Demo Deploy UniCampus Backend to EC2 (Using docker-compose V1 via command module)
+  hosts: ec2_instances
+  gather_facts: yes
+  # become: yes # Apply to tasks needing sudo, like docker-compose if user isn't in docker group
+
+  vars:
+    app_project_dir: "/home/ec2-user/unicampus-backend"
+    github_protocol: "https"
+    github_username: "iamsjeevan"
+    # GITHUB_PAT will be passed as an --extra-var
+    github_domain: "github.com"
+    github_repo_owner: "iamsjeevan" # Usually same as username for personal repos
+    github_repo_name: "unicampus-backend"
+    git_branch_to_pull: "main"
+
+  tasks:
+    - name: Ensure application project directory exists and is a git repo
+      ansible.builtin.stat:
+        path: "{{ app_project_dir }}/.git"
+      register: git_project_dir_stat
+
+    - name: Fail if project directory is not a git repository
+      ansible.builtin.fail:
+        msg: "Project directory '{{ app_project_dir }}' does not appear to be a git repo or does not exist."
+      when: not git_project_dir_stat.stat.exists or not git_project_dir_stat.stat.isdir
+
+    - name: Pull latest changes from Git repository using PAT
+      ansible.builtin.git:
+        repo: "{{ github_protocol }}://{{ github_username }}:{{ GITHUB_PAT }}@{{ github_domain }}/{{ github_repo_owner }}/{{ github_repo_name }}.git"
+        dest: "{{ app_project_dir }}"
+        version: "{{ git_branch_to_pull }}"
+        force: yes
+      register: git_pull_result
+      no_log: true 
+
+    - name: Debug | Git Pull Task Result (Safe)
+      ansible.builtin.debug:
+        msg: "Git pull completed. RC: {{ git_pull_result.rc | default('N/A') }}. Changed: {{ git_pull_result.changed | default('N/A') }}. Stdout: {{ git_pull_result.stdout | default('') }}. Stderr: {{ git_pull_result.stderr | default('') }}"
+      when: git_pull_result is defined
+
+    # --- Docker Compose Section (Using ansible.builtin.command for docker-compose V1) ---
+    - name: Check if docker-compose (V1, hyphenated) is available
+      ansible.builtin.command: "docker-compose --version" # Note the hyphen
+      register: docker_compose_v1_check
+      ignore_errors: true 
+      changed_when: false
+
+    - name: Fail if docker-compose (V1) is not found
+      ansible.builtin.fail:
+        msg: "docker-compose (V1, hyphenated) not found on EC2 instance {{ inventory_hostname }}. Please ensure it is installed and in the PATH for the '{{ ansible_user }}' user."
+      when: docker_compose_v1_check.rc != 0
+
+    - name: Debug | docker-compose (V1) Version Output
+      ansible.builtin.debug:
+        var: docker_compose_v1_check.stdout_lines
+      when: docker_compose_v1_check.rc == 0
+
+    - name: Stop existing services (if any, to ensure clean start)
+      ansible.builtin.command: "docker-compose down"
+      args:
+        chdir: "{{ app_project_dir }}" # Run in the project directory
+      register: compose_down_result
+      changed_when: "'Stopping' in compose_down_result.stdout or 'Removing' in compose_down_result.stdout"
+      become: yes # docker-compose down often needs sudo
+      when: docker_compose_v1_check.rc == 0 # Only if docker-compose V1 is found
+
+    - name: Debug | Docker Compose Down Result
+      ansible.builtin.debug:
+        var: compose_down_result
+      when: compose_down_result is defined
+
+    - name: Build and start services with docker-compose (V1)
+      ansible.builtin.command: "docker-compose up --build -d --remove-orphans"
+      args:
+        chdir: "{{ app_project_dir }}" # Run in the project directory
+      register: compose_up_result
+      # This command almost always "changes" something if it runs successfully
+      # A more sophisticated changed_when would parse compose_up_result.stdout
+      changed_when: compose_up_result.rc == 0
+      become: yes # docker-compose up often needs sudo
+      when: docker_compose_v1_check.rc == 0 # Only if docker-compose V1 is found
+
+    - name: Debug | Docker Compose Up Result
+      ansible.builtin.debug:
+        var: compose_up_result
+      when: compose_up_result is defined
+
+    - name: Display running Docker containers (for verification)
+      ansible.builtin.command: "docker ps -a"
+      register: docker_ps_output
+      changed_when: false
+      become: yes 
+
+    - name: Show Docker PS output
+      ansible.builtin.debug:
+        var: docker_ps_output.stdout_lines
