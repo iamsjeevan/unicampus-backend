@@ -58,7 +58,7 @@ jobs:
           # This GITHUB_PAT is used by the Ansible playbook ON THE EC2 INSTANCE to clone the repo
           ANSIBLE_EC2_GITHUB_PAT: ${{ secrets.EC2_GITHUB_PAT }}
         run: |
-          ansible-playbook -i inventory.ini deploy-ec2.yml \
+          ansible-playbook -i inventory.ini deploy_demo_ec2.yml \
             --extra-vars "GITHUB_PAT=${ANSIBLE_EC2_GITHUB_PAT}" \
             -v
           # Ensure your Ansible playbook is named deploy-ec2.yml and is at the root of the repo
