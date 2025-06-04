@@ -53,13 +53,14 @@ jobs:
           # echo "[ec2_instances:vars]" >> inventory.ini
           # echo "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" >> inventory.ini
 
-      - name: Run Ansible Playbook
+            - name: Run Ansible Playbook
         env:
-          # This GITHUB_PAT is used by the Ansible playbook ON THE EC2 INSTANCE to clone the repo
           ANSIBLE_EC2_GITHUB_PAT: ${{ secrets.EC2_GITHUB_PAT }}
         run: |
-          ansible-playbook -i inventory.ini deploy_demo_ec2.yml \
+          # Optional: Add this line to confirm current directory in Actions
+          # pwd
+          # ls -la
+          # ls -la ansible/
+          ansible-playbook -i ansible/ec2_inventory.ini ansible/deploy_demo_ec2.yml \
             --extra-vars "GITHUB_PAT=${ANSIBLE_EC2_GITHUB_PAT}" \
             -v
-          # Ensure your Ansible playbook is named deploy-ec2.yml and is at the root of the repo
-          # (or adjust the path: e.g., ansible/deploy-ec2.yml).
