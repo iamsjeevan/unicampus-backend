@@ -35,7 +35,7 @@ services:
     depends_on:
       - mongo # If Resources feature uses it
       - flask_app # Node app depends on Flask app being up to proxy calls
-    command: ["npm", "run", "dev"] # Use nodemon for development
+    command: ["npm", "start"] # Use nodemon for development
 
   mongo:
     image: mongo:latest
