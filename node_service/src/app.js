@@ -5,16 +5,29 @@ const mainRouter = require('./routes');
 
 const app = express();
 
-// Enable CORS for your frontend origin:
+// ✅ Enable CORS for multiple frontend origins
+const allowedOrigins = [
+  'https://unicampusmsrit.netlify.app',
+  'http://localhost:3000',
+  'https://your-other-frontend.com',
+  'https://refactored-space-winner-9wgrw9gjxrphx5r9-8080.app.github.dev' // newly added origin
+];
+
 const corsOptions = {
-  origin: 'https://unicampusmsrit.netlify.app', // <-- replace with your frontend URL
-  credentials: true, // if you need cookies/auth headers (optional)
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // allow tools like Postman
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
 };
+
 app.use(cors(corsOptions));
 
-// Alternatively, to allow all origins (less secure, but easier for testing)
-// app.use(cors());
-
+// MongoDB connection
 const dbURI = process.env.RESOURCES_MONGO_URI;
 if (!dbURI) {
     console.error("FATAL ERROR: RESOURCES_MONGO_URI is not defined. Set it in node_service/.env");
@@ -30,19 +43,22 @@ mongoose.connect(dbURI)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'healthy', service: 'Node.js Gateway/Resource Service' });
 });
 
+// API routing
 app.use('/api/v1', mainRouter);
 
+// Global error handler
 app.use((err, req, res, next) => {
   console.error("Node Service Error:", err.message);
   if (err instanceof require('multer').MulterError) {
     return res.status(400).json({ status: 'fail', message: `File upload error: ${err.message}` });
   }
   if (err.message.includes('File type not allowed')) {
-      return res.status(400).json({ status: 'fail', message: err.message });
+    return res.status(400).json({ status: 'fail', message: err.message });
   }
   res.status(err.statusCode || 500).json({
     status: 'error',
