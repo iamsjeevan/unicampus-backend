@@ -160,30 +160,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # - name: Build and push Flask Service Docker image
-      #   uses: docker/build-push-action@v5
-      #   with:
-      #     context: ./flask_service
-      #     file: ./flask_service/Dockerfile
-      #     push: true
-      #     platforms: linux/amd64,linux/arm64
-      #     tags: |
-      #       ghcr.io/${{ github.repository_owner }}/unicampus-flask-service:latest
-      #       ghcr.io/${{ github.repository_owner }}/unicampus-flask-service:${{ github.sha }}
-      #     cache-from: type=gha
-      #     cache-to: type=gha,mode=max
-      #   continue-on-error: true # For demo, allow pushing next image even if this one fails
+      - name: Build and push Flask Service Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./flask_service
+          file: ./flask_service/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/unicampus-flask-service:latest
+            ghcr.io/${{ github.repository_owner }}/unicampus-flask-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+        continue-on-error: true # For demo, allow pushing next image even if this one fails
 
-      # - name: Build and push Node Service Docker image
-      #   uses: docker/build-push-action@v5
-      #   with:
-      #     context: ./node_service
-      #     file: ./node_service/Dockerfile
-      #     push: true
-      #     platforms: linux/amd64,linux/arm64
-      #     tags: |
-      #       ghcr.io/${{ github.repository_owner }}/unicampus-node-service:latest
-      #       ghcr.io/${{ github.repository_owner }}/unicampus-node-service:${{ github.sha }}
-      #     cache-from: type=gha
-      #     cache-to: type=gha,mode=max
-      #   continue-on-error: true # For demo
+      - name: Build and push Node Service Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./node_service
+          file: ./node_service/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/unicampus-node-service:latest
+            ghcr.io/${{ github.repository_owner }}/unicampus-node-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+        continue-on-error: true # For demo
