@@ -7,7 +7,7 @@ const app = express();
 
 // ✅ Enable CORS for multiple frontend origins
 const allowedOrigins = [
-  'https://unicampusmsrit.netlify.app',
+  'https://unicampusrit.netlify.app',
   'http://localhost:3000',
   'https://your-other-frontend.com',
   'https://refactored-space-winner-9wgrw9gjxrphx5r9-8080.app.github.dev' // newly added origin
