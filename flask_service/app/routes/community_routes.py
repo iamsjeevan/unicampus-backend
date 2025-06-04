@@ -1,4 +1,4 @@
-# app/routes/community_routes.py
+# flask_service/app/routes/community_routes.py
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models.community import Community
@@ -6,16 +6,7 @@ from app.models.post import Post
 from app.models.comment import Comment # Ensure this model is defined and imported
 from bson import ObjectId, errors as bson_errors
 
-# --- REVERTED TO YOUR ORIGINAL BLUEPRINT NAME ---
 community_bp = Blueprint('community_bp', __name__)
-
-# IMPORTANT: This blueprint (community_bp) should be registered in your main Flask app
-# with a url_prefix like '/api/v1'.
-# e.g., in app/__init__.py: app.register_blueprint(community_bp, url_prefix='/api/v1')
-#
-# Then, routes defined here will be relative to that.
-# For example, @community_bp.route('/communities', ...) will become /api/v1/communities
-# And @community_bp.route('/communities/<id>/posts', ...) will become /api/v1/communities/<id>/posts
 
 # === Community Management Routes ===
 @community_bp.route('/communities', methods=['POST'])
@@ -112,19 +103,56 @@ def leave_community_route(community_id):
 @community_bp.route('/communities/<string:community_id_from_url>/posts', methods=['POST'])
 @jwt_required()
 def create_post_in_community_route(community_id_from_url):
-    current_user_id_str = get_jwt_identity(); data = request.get_json()
+    current_user_id_str = get_jwt_identity()
+    
+    # --- START DEBUG LOGGING ---
+    current_app.logger.info(f"--- FLASK: Attempting to create post in community: {community_id_from_url} by user: {current_user_id_str} ---")
+    current_app.logger.info(f"FLASK create_post - Request Headers: {request.headers}")
+    current_app.logger.info(f"FLASK create_post - Request Mimetype: {request.mimetype}")
+    
+    received_data = None
     try:
-        new_post = Post.create_post(
-            community_id_str=community_id_from_url, author_id_str=current_user_id_str, 
-            title=data.get('title'), content_type=data.get('contentType'),
-            content_text=data.get('contentText'), image_url=data.get('imageUrl'), 
-            link_url=data.get('linkUrl'), tags=data.get('tags')
-        )
-        return jsonify({"status": "success", "data": {"post": new_post}}), 201
-    except ValueError as ve: return jsonify({"status": "fail", "message": str(ve)}), 400
-    except Exception as e: current_app.logger.error(f"Err creating post in C:{community_id_from_url}: {e}", exc_info=True); return jsonify({"status": "error", "message": "Could not create post."}), 500
+        received_data = request.get_json()
+        current_app.logger.info(f"FLASK create_post - Successfully parsed JSON data: {received_data}")
+    except Exception as e:
+        current_app.logger.error(f"FLASK create_post - Failed to parse request body as JSON: {e}", exc_info=True)
+        # Try to log raw data if JSON parsing fails, but be cautious with large data
+        try:
+            raw_data = request.get_data(as_text=True)
+            current_app.logger.info(f"FLASK create_post - Raw request data (if not JSON): {raw_data[:500]}...") # Log first 500 chars
+        except Exception as data_err:
+            current_app.logger.error(f"FLASK create_post - Could not get raw request data: {data_err}")
+        return jsonify({"status": "fail", "message": "Invalid JSON format in request body."}), 400
+    
+    if received_data is None: # Should not happen if get_json() didn't raise error, but as a safeguard
+        current_app.logger.error(f"FLASK create_post - Data is None after get_json() call, but no exception was raised.")
+        return jsonify({"status": "fail", "message": "Request body is empty or not processed."}), 400
+    # --- END DEBUG LOGGING ---
 
-# THIS IS THE ROUTE THAT WAS GIVING 404
+    data = received_data # Use the potentially logged data
+
+    try:
+        current_app.logger.info(f"FLASK create_post - Calling Post.create_post with title: '{data.get('title')}', contentType: '{data.get('contentType')}'")
+        new_post = Post.create_post(
+            community_id_str=community_id_from_url, 
+            author_id_str=current_user_id_str, 
+            title=data.get('title'), 
+            content_type=data.get('contentType'), # This is where the ValueError might originate
+            content_text=data.get('contentText'), 
+            image_url=data.get('imageUrl'), 
+            link_url=data.get('linkUrl'), 
+            tags=data.get('tags')
+        )
+        current_app.logger.info(f"FLASK create_post - Post created successfully: {new_post.get('id') if new_post else 'None'}")
+        return jsonify({"status": "success", "data": {"post": new_post}}), 201
+    except ValueError as ve: 
+        current_app.logger.warning(f"FLASK create_post - ValueError during Post.create_post: {str(ve)}")
+        return jsonify({"status": "fail", "message": str(ve)}), 400
+    except Exception as e: 
+        current_app.logger.error(f"FLASK create_post - Unexpected error during Post.create_post for C:{community_id_from_url}: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Could not create post due to an internal error."}), 500
+
+# ... (rest of your routes remain the same) ...
 @community_bp.route('/communities/<string:community_id>/posts', methods=['GET'])
 @jwt_required(optional=True)
 def get_posts_for_community_route(community_id):
@@ -139,13 +167,8 @@ def get_posts_for_community_route(community_id):
         sort_by = request.args.get('sortBy', 'new', type=str).lower()
         
         if page < 1: page = 1
-        
-        # Corrected per_page validation
-        if per_page < 1:
-            per_page = 1
-        elif per_page > 50:
-            per_page = 50
-            
+        if per_page < 1: per_page = 1
+        elif per_page > 50: per_page = 50
         if sort_by not in ['new', 'hot', 'top']: sort_by = 'new'
             
         result = Post.get_posts_for_community_for_user(
@@ -160,10 +183,6 @@ def get_posts_for_community_route(community_id):
     except ValueError as ve: current_app.logger.warn(f"ValueError C posts {community_id}: {ve}"); return jsonify({"status": "fail", "message": str(ve)}), 404
     except Exception as e: current_app.logger.error(f"Error C posts {community_id}: {e}", exc_info=True); return jsonify({"status": "error", "message": "Failed to get posts."}), 500
 
-# Routes for individual posts: GET /posts/:id, PUT /posts/:id, DELETE /posts/:id, POST /posts/:id/vote
-# These are defined directly on community_bp. If community_bp is registered with url_prefix='/api/v1',
-# these routes will become /api/v1/posts/<post_id> etc.
-# This assumes your Node.js proxy forwards requests for /api/v1/posts/* to Flask.
 @community_bp.route('/posts/<string:post_id>', methods=['GET'])
 @jwt_required(optional=True)
 def get_post_detail_route(post_id):
@@ -208,18 +227,16 @@ def vote_on_post_route(post_id):
     current_user_id_str = get_jwt_identity(); data = request.get_json(); direction = data.get('direction')
     if not direction or direction not in ["up", "down", "none"]: return jsonify({"status": "fail", "message": "Invalid vote direction."}), 400
     try:
-        # Assuming Post.vote_on_post returns a dict that can be directly used for VoteApiResponse.data
         updated_post_data = Post.vote_on_post(post_id, current_user_id_str, direction)
         return jsonify({"status": "success", "message": "Vote processed.", 
-                        "data": { # Ensure this matches VoteApiResponse
+                        "data": { 
                             "upvotes": updated_post_data.get("upvotes"), 
                             "downvotes": updated_post_data.get("downvotes"), 
-                            "user_vote": updated_post_data.get("userVote") # Expecting userVote from model
+                            "user_vote": updated_post_data.get("userVote")
                         }}), 200
     except ValueError as ve: return jsonify({"status": "fail", "message": str(ve)}), 404 if "not found" in str(ve).lower() else 400
     except Exception as e: current_app.logger.error(f"Err voting on post {post_id}: {e}", exc_info=True); return jsonify({"status": "error", "message": "Could not process vote."}), 500
 
-# === Comment Management Routes ===
 @community_bp.route('/posts/<string:post_id>/comments', methods=['POST'])
 @jwt_required()
 def create_comment_on_post_route(post_id):
@@ -243,12 +260,8 @@ def get_comments_for_post_route(post_id):
         sort_by = request.args.get('sortBy', 'newest', type=str).lower()
         
         if page < 1: page = 1
-        # Corrected syntax here
-        if per_page < 1:
-            per_page = 1
-        elif per_page > 100: 
-            per_page = 100
-            
+        if per_page < 1: per_page = 1
+        elif per_page > 100: per_page = 100
         if sort_by not in ['newest', 'oldest', 'top']: sort_by = 'newest'
         
         result = Comment.get_comments_for_post_for_user(
@@ -261,13 +274,6 @@ def get_comments_for_post_route(post_id):
     except ValueError as ve: return jsonify({"status": "fail", "message": str(ve)}), 400
     except Exception as e: current_app.logger.error(f"Err fetching comments for P:{post_id}: {e}", exc_info=True); return jsonify({"status": "error", "message": "Failed to get comments."}), 500
 
-# app/routes/community_routes.py
-# ... (other imports and blueprint definition) ...
-
-# GET /api/v1/comments/<commentId>/replies - List REPLIES for a specific comment
-# (This path assumes community_bp is registered at /api/v1 and this route is /comments/... on it)
-# OR /api/v1/communities/comments/... if that's the full path based on blueprint prefixing.
-# Based on previous files, this seems to be on community_bp.
 @community_bp.route('/comments/<string:parent_comment_id>/replies', methods=['GET'])
 @jwt_required(optional=True)
 def get_replies_for_comment_route(parent_comment_id):
@@ -275,39 +281,27 @@ def get_replies_for_comment_route(parent_comment_id):
     try: 
         user_identity = get_jwt_identity()
         current_user_id_str = str(user_identity) if user_identity else None
-    except Exception: 
-        pass
-    
+    except Exception: pass
     try:
         parent_comment = Comment.find_by_id(parent_comment_id)
-        if not parent_comment: 
-            return jsonify({"status": "fail", "message": "Parent comment not found."}), 404
-        
-        post_id_for_replies = parent_comment.get("postId") # Expect camelCase 'postId' from Comment model
-        if not post_id_for_replies: 
-            return jsonify({"status": "error", "message": "Parent comment missing post association."}), 500
+        if not parent_comment: return jsonify({"status": "fail", "message": "Parent comment not found."}), 404
+        post_id_for_replies = parent_comment.get("postId")
+        if not post_id_for_replies: return jsonify({"status": "error", "message": "Parent comment missing post association."}), 500
 
         page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('limit', 10, type=int) # Fewer replies per page
-        sort_by = request.args.get('sortBy', 'oldest', type=str).lower() # Replies often shown oldest first
+        per_page = request.args.get('limit', 10, type=int)
+        sort_by = request.args.get('sortBy', 'oldest', type=str).lower()
         
-        if page < 1: 
-            page = 1
-        
-        # CORRECTED SYNTAX FOR per_page:
-        if per_page < 1:
-            per_page = 1
-        elif per_page > 50: # Max limit
-            per_page = 50
-            
-        if sort_by not in ['newest', 'oldest']: # Assuming 'top' might not apply well to replies here
-            sort_by = 'oldest'
+        if page < 1: page = 1
+        if per_page < 1: per_page = 1
+        elif per_page > 50: per_page = 50
+        if sort_by not in ['newest', 'oldest']: sort_by = 'oldest'
 
-        result = Comment.get_comments_for_post_for_user( # This method fetches comments/replies
+        result = Comment.get_comments_for_post_for_user(
             post_id_str=str(post_id_for_replies), 
             current_user_id_str=current_user_id_str, 
             page=page, per_page=per_page, sort_by=sort_by, 
-            parent_id_str=parent_comment_id # Pass the parent_id to fetch its children (replies)
+            parent_id_str=parent_comment_id
         )
         return jsonify({
             "status": "success", "data": result.get('comments',[]), "results": result.get('total',0),
@@ -324,14 +318,13 @@ def get_replies_for_comment_route(parent_comment_id):
         current_app.logger.error(f"Err fetching replies for Cmnt:{parent_comment_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to get replies."}), 500
 
-# ... (rest of your community_routes.py)
 @community_bp.route('/comments/<string:comment_id>/vote', methods=['POST'])
 @jwt_required()
 def vote_on_comment_route(comment_id):
     current_user_id_str = get_jwt_identity(); data = request.get_json(); direction = data.get('direction')
     if not direction or direction not in ["up", "down", "none"]: return jsonify({"status": "fail", "message": "Invalid vote direction."}), 400
     try:
-        result_dict = Comment.vote_on_comment(comment_id, current_user_id_str, direction) # Assuming this method exists
+        result_dict = Comment.vote_on_comment(comment_id, current_user_id_str, direction)
         return jsonify({"status": "success", "message": result_dict.get("message"), 
                         "data": {"upvotes": result_dict.get("upvotes"), "downvotes": result_dict.get("downvotes"), 
                                  "user_vote": result_dict.get("userVote")}}), 200
@@ -344,7 +337,7 @@ def update_comment_route(comment_id):
     current_user_id_str = get_jwt_identity(); data = request.get_json(); new_text = data.get('text')
     if not new_text or not new_text.strip(): return jsonify({"status": "fail", "message": "Comment text required."}), 400
     try:
-        updated_comment = Comment.update_comment(comment_id_str=comment_id, author_id_str=current_user_id_str, new_text=new_text) # Assuming this method exists
+        updated_comment = Comment.update_comment(comment_id_str=comment_id, author_id_str=current_user_id_str, new_text=new_text)
         return jsonify({"status": "success", "data": {"comment": updated_comment}}), 200
     except ValueError as ve: return jsonify({"status": "fail", "message": str(ve)}), 404 if "not found" in str(ve).lower() else 400
     except PermissionError as pe: return jsonify({"status": "fail", "message": str(pe)}), 403
@@ -355,7 +348,7 @@ def update_comment_route(comment_id):
 def delete_comment_route(comment_id):
     current_user_id_str = get_jwt_identity()
     try:
-        success = Comment.delete_comment(comment_id_str=comment_id, user_id_str=current_user_id_str) # Assuming this method exists
+        success = Comment.delete_comment(comment_id_str=comment_id, user_id_str=current_user_id_str)
         if success: return jsonify({"status": "success", "message": "Comment deleted."}), 200
         else: return jsonify({"status": "fail", "message": "Comment not found or not authorized."}), 404
     except ValueError as ve: return jsonify({"status": "fail", "message": str(ve)}), 404
