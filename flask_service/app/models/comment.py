@@ -227,23 +227,59 @@ class Comment:
     @staticmethod
     def to_dict(comment_doc, current_user_id_str=None):
         if not comment_doc: return None
+
+        author_display_name = "Unknown Author" # Default
+        author_id_for_object = "unknown"
+        author_avatar_url = None
+
+        author_id_obj = comment_doc.get("author_id")
+        if author_id_obj:
+            author_id_for_object = str(author_id_obj)
+            author_doc_from_db = User.find_by_id(str(author_id_obj))
+            if author_doc_from_db:
+                full_name = author_doc_from_db.get("name")
+                usn = author_doc_from_db.get("usn")
+                
+                if full_name and usn:
+                    author_display_name = f"{full_name} - {usn.upper()}"
+                elif full_name:
+                    author_display_name = full_name
+                elif usn:
+                    author_display_name = usn.upper()
+                else:
+                    author_display_name = "User Details Missing"
+                
+                author_avatar_url = author_doc_from_db.get("avatar")
+            else:
+                author_display_name = f"User Not Found ({str(author_id_obj)[:8]}...)"
+        else:
+            author_display_name = "Author ID Missing"
+
+        author_details = {
+            "id": author_id_for_object,
+            "name": author_display_name, # Combined name and USN
+            "avatarUrl": author_avatar_url 
+        }
+
         data = {
             "id": str(comment_doc["_id"]),
             "post_id": str(comment_doc.get("post_id")),
-            "author_id": str(comment_doc.get("author_id")),
+            "author": author_details, # EMBEDDED AUTHOR OBJECT with combined name
             "text": comment_doc.get("text"),
             "parent_comment_id": str(comment_doc.get("parent_comment_id")) if comment_doc.get("parent_comment_id") else None,
             "created_at": comment_doc.get("created_at").isoformat() if comment_doc.get("created_at") else None,
             "updated_at": comment_doc.get("updated_at").isoformat() if comment_doc.get("updated_at") else None,
-            "upvotes": comment_doc.get("upvotes", 0), "downvotes": comment_doc.get("downvotes", 0),
-            "reply_count": comment_doc.get("reply_count", 0), # Include reply_count
+            "upvotes": comment_doc.get("upvotes", 0), 
+            "downvotes": comment_doc.get("downvotes", 0),
+            "reply_count": comment_doc.get("reply_count", 0),
             "user_vote": None 
         }
+        # ... (user_vote logic remains the same) ...
         if current_user_id_str:
             try:
                 user_obj_id = ObjectId(current_user_id_str)
                 if user_obj_id in comment_doc.get("upvoted_by", []): data["user_vote"] = "up"
                 elif user_obj_id in comment_doc.get("downvoted_by", []): data["user_vote"] = "down"
-            except bson_errors.InvalidId: pass # Ignore if current_user_id_str is not valid ObjectId
+            except bson_errors.InvalidId: pass
             except Exception as e: current_app.logger.warning(f"Vote determination for user {current_user_id_str} on comment {data['id']}: {e}")
         return data

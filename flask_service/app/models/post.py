@@ -81,12 +81,48 @@ class Post:
     @staticmethod
     def to_dict(post_doc, current_user_id_str=None):
         if not post_doc: return None
+
+        author_display_name = "Unknown Author" # Default
+        author_id_for_object = "unknown"
+        author_avatar_url = None
+
+        author_id_obj = post_doc.get("author_id")
+        if author_id_obj:
+            author_id_for_object = str(author_id_obj) # Store the ID regardless
+            author_doc_from_db = User.find_by_id(str(author_id_obj)) 
+            if author_doc_from_db:
+                full_name = author_doc_from_db.get("name")
+                usn = author_doc_from_db.get("usn")
+                
+                if full_name and usn:
+                    author_display_name = f"{full_name} - {usn.upper()}"
+                elif full_name:
+                    author_display_name = full_name
+                elif usn: # Should ideally not happen if name is always present for a user
+                    author_display_name = usn.upper()
+                else: # Name and USN both missing from user doc
+                    author_display_name = "User Details Missing"
+                
+                author_avatar_url = author_doc_from_db.get("avatar")
+            else:
+                # Author ID present but user not found
+                author_display_name = f"User Not Found ({str(author_id_obj)[:8]}...)"
+        else:
+            # No author_id in post_doc
+            author_display_name = "Author ID Missing"
+            
+        author_details = {
+            "id": author_id_for_object,
+            "name": author_display_name, # Combined name and USN
+            "avatarUrl": author_avatar_url 
+        }
+
         data = {
             "id": str(post_doc["_id"]),
             "community_id": str(post_doc.get("community_id")),
             "community_slug": post_doc.get("community_slug"),
             "community_name": post_doc.get("community_name"),
-            "author_id": str(post_doc.get("author_id")), # Ensure your DB stores 'author_id'
+            "author": author_details, # EMBEDDED AUTHOR OBJECT with combined name
             "title": post_doc.get("title"), 
             "content_type": post_doc.get("content_type"),
             "content_text": post_doc.get("content_text"), 
@@ -101,6 +137,7 @@ class Post:
             "last_activity_at": post_doc.get("last_activity_at").isoformat() if post_doc.get("last_activity_at") else None,
             "user_vote": None 
         }
+        # ... (user_vote logic remains the same) ...
         if current_user_id_str:
             try:
                 user_obj_id = ObjectId(current_user_id_str)
@@ -111,7 +148,7 @@ class Post:
             except Exception as e: 
                 current_app.logger.warning(f"Vote determination error for user {current_user_id_str} on post {data['id']}: {e}")
         return data
-    
+
     # Example for find_by_id_for_user (should already exist based on your routes)
     @staticmethod
     def find_by_id_for_user(post_id_str, current_user_id_str=None):
