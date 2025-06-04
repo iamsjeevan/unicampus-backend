@@ -12,7 +12,8 @@ community_bp = Blueprint('community_bp', __name__)
 @community_bp.route('/communities', methods=['POST'])
 @jwt_required()
 def create_community_route():
-    # Assuming frontend sends camelCase for community creation, adjust if it's snake_case
+    # Assuming frontend sends camelCase for community creation based on your model.
+    # If it sends snake_case, adjust data.get('icon') to data.get('icon_url') etc.
     data = request.get_json() 
     current_user_id = get_jwt_identity()
     try:
@@ -21,8 +22,8 @@ def create_community_route():
             description=data.get('description'), 
             created_by_id_str=current_user_id,
             rules=data.get('rules'), 
-            icon_url=data.get('icon'), 
-            banner_image_url=data.get('bannerImage'), 
+            icon_url=data.get('icon'), # Matches Community.create_community expecting icon_url
+            banner_image_url=data.get('bannerImage'), # Matches Community.create_community
             tags=data.get('tags')
         )
         if not new_community:
@@ -44,8 +45,7 @@ def get_communities_route():
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('limit', 10, type=int)
-        # Assuming searchQuery from query params is fine as is (often camelCase in query params)
-        search_query = request.args.get('searchQuery', type=str) 
+        search_query = request.args.get('searchQuery', type=str) # Query params often camelCase
         result = Community.get_all_communities(page=page, per_page=per_page, search_query=search_query, current_user_id_str=current_user_id_str)
         return jsonify({"status": "success", "data": result['communities'], "results": result['total'],
                         "pagination": {"totalItems": result['total'], "totalPages": result['pages'], 
@@ -145,18 +145,18 @@ def create_post_in_community_route(community_id_from_url):
     data = received_data 
 
     try:
-        # Log with the keys we are *actually* using to retrieve values
-        current_app.logger.info(f"FLASK create_post - Calling Post.create_post with title: '{data.get('title')}', content_type from data['content_type']: '{data.get('content_type')}'")
+        # Log with the keys we are *actually* using to retrieve values from the parsed JSON
+        current_app.logger.info(f"FLASK create_post - Calling Post.create_post with title: '{data.get('title')}', content_type from data.get('content_type'): '{data.get('content_type')}'")
         
         new_post = Post.create_post(
             community_id_str=community_id_from_url, 
             author_id_str=current_user_id_str, 
             title=data.get('title'), 
-            content_type=data.get('content_type'),      # CHANGED: Expect snake_case
-            content_text=data.get('content_text'),      # CHANGED: Expect snake_case
-            image_url=data.get('image_url'),          # CHANGED: Expect snake_case (assuming consistency)
-            link_url=data.get('link_url'),            # CHANGED: Expect snake_case (assuming consistency)
-            tags=data.get('tags')                     # Assuming 'tags' is fine as is
+            content_type=data.get('content_type'),      # Expect snake_case from JSON
+            content_text=data.get('content_text'),      # Expect snake_case from JSON
+            image_url=data.get('image_url'),            # Expect snake_case from JSON
+            link_url=data.get('link_url'),              # Expect snake_case from JSON
+            tags=data.get('tags')                       # Assuming 'tags' is fine as is
         )
         current_app.logger.info(f"FLASK create_post - Post created successfully: {new_post.get('id') if new_post else 'None'}")
         return jsonify({"status": "success", "data": {"post": new_post}}), 201
@@ -166,6 +166,11 @@ def create_post_in_community_route(community_id_from_url):
     except Exception as e: 
         current_app.logger.error(f"FLASK create_post - Unexpected error during Post.create_post for C:{community_id_from_url}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Could not create post due to an internal error."}), 500
+
+# ... (The rest of your routes: GET posts, PUT post, DELETE post, POST vote, comment routes, etc.
+#      Ensure consistency in how you expect JSON keys (snake_case vs camelCase) for those routes too.
+#      I've updated them below assuming snake_case for request bodies where applicable,
+#      but kept query params like 'sortBy' as camelCase as that's common.)
 
 @community_bp.route('/communities/<string:community_id>/posts', methods=['GET'])
 @jwt_required(optional=True)
@@ -180,7 +185,7 @@ def get_posts_for_community_route(community_id):
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('limit', 10, type=int)
-        sort_by = request.args.get('sortBy', 'new', type=str).lower() # Query params often camelCase
+        sort_by = request.args.get('sortBy', 'new', type=str).lower()
         
         if page < 1: page = 1
         if per_page < 1: per_page = 1
@@ -226,12 +231,11 @@ def update_post_route(post_id):
     data = request.get_json()
     if not data: return jsonify({"status": "fail", "message": "Request body is empty."}), 400
     
-    # Assuming update payload from client will also be snake_case for consistency
     update_payload = {}
     if 'title' in data: update_payload['title'] = data['title']
-    if 'content_text' in data: update_payload['content_text'] = data['content_text'] # snake_case
-    if 'image_url' in data: update_payload['image_url'] = data['image_url']       # snake_case
-    if 'link_url' in data: update_payload['link_url'] = data['link_url']          # snake_case
+    if 'content_text' in data: update_payload['content_text'] = data['content_text']
+    if 'image_url' in data: update_payload['image_url'] = data['image_url']
+    if 'link_url' in data: update_payload['link_url'] = data['link_url']
     if 'tags' in data: update_payload['tags'] = data['tags']
 
     if not update_payload: return jsonify({"status": "fail", "message": "No updatable fields provided or fields are empty."}), 400
@@ -251,7 +255,7 @@ def delete_post_route(post_id):
     try:
         success = Post.delete_post(post_id_str=post_id, user_id_str=current_user_id_str)
         if success: return jsonify({"status": "success", "message": "Post deleted."}), 200
-        else: return jsonify({"status": "fail", "message": "Post not found or not authorized."}), 404 # Or specific message from model
+        else: return jsonify({"status": "fail", "message": "Post not found or not authorized."}), 404
     except ValueError as ve: return jsonify({"status": "fail", "message": str(ve)}), 404
     except PermissionError as pe: return jsonify({"status": "fail", "message": str(pe)}), 403
     except Exception as e: 
@@ -263,7 +267,7 @@ def delete_post_route(post_id):
 def vote_on_post_route(post_id):
     current_user_id_str = get_jwt_identity()
     data = request.get_json()
-    direction = data.get('direction') # Assuming 'direction' is fine
+    direction = data.get('direction')
     if not direction or direction not in ["up", "down", "none"]: return jsonify({"status": "fail", "message": "Invalid vote direction."}), 400
     try:
         updated_post_data = Post.vote_on_post(post_id, current_user_id_str, direction)
@@ -271,7 +275,7 @@ def vote_on_post_route(post_id):
                         "data": { 
                             "upvotes": updated_post_data.get("upvotes"), 
                             "downvotes": updated_post_data.get("downvotes"), 
-                            "user_vote": updated_post_data.get("userVote") # Assuming model returns userVote
+                            "user_vote": updated_post_data.get("userVote")
                         }}), 200
     except ValueError as ve: return jsonify({"status": "fail", "message": str(ve)}), 404 if "not found" in str(ve).lower() else 400
     except Exception as e: 
@@ -284,8 +288,8 @@ def vote_on_post_route(post_id):
 def create_comment_on_post_route(post_id):
     current_user_id_str = get_jwt_identity()
     data = request.get_json()
-    text = data.get('text') # Assuming 'text' is fine
-    parent_comment_id_str = data.get('parent_comment_id') # CHANGED: Expect snake_case
+    text = data.get('text')
+    parent_comment_id_str = data.get('parent_comment_id') # Expect snake_case from JSON
     if not text or not text.strip(): return jsonify({"status": "fail", "message": "Comment text required."}), 400
     try:
         new_comment = Comment.create_comment(post_id_str=post_id, author_id_str=current_user_id_str, text=text, parent_comment_id_str=parent_comment_id_str)
@@ -306,7 +310,7 @@ def get_comments_for_post_route(post_id):
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('limit', 20, type=int)
-        sort_by = request.args.get('sortBy', 'newest', type=str).lower() # Query params often camelCase
+        sort_by = request.args.get('sortBy', 'newest', type=str).lower()
         
         if page < 1: page = 1
         if per_page < 1: per_page = 1
@@ -380,7 +384,7 @@ def vote_on_comment_route(comment_id):
         result_dict = Comment.vote_on_comment(comment_id, current_user_id_str, direction)
         return jsonify({"status": "success", "message": result_dict.get("message"), 
                         "data": {"upvotes": result_dict.get("upvotes"), "downvotes": result_dict.get("downvotes"), 
-                                 "user_vote": result_dict.get("user_vote")}}), 200 # Assuming model returns user_vote
+                                 "user_vote": result_dict.get("user_vote")}}), 200
     except ValueError as ve: return jsonify({"status": "fail", "message": str(ve)}), 404 if "not found" in str(ve).lower() else 400
     except Exception as e: 
         current_app.logger.error(f"Err voting on Cmnt {comment_id}: {e}", exc_info=True)
@@ -391,7 +395,7 @@ def vote_on_comment_route(comment_id):
 def update_comment_route(comment_id):
     current_user_id_str = get_jwt_identity()
     data = request.get_json()
-    new_text = data.get('text') # Assuming 'text' is fine
+    new_text = data.get('text')
     if not new_text or not new_text.strip(): return jsonify({"status": "fail", "message": "Comment text required."}), 400
     try:
         updated_comment = Comment.update_comment(comment_id_str=comment_id, author_id_str=current_user_id_str, new_text=new_text)
