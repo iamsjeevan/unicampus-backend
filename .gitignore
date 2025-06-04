@@ -48,3 +48,4 @@ package-lock.json # If you commit package.json and let CI do clean installs
 # Uploads for Node service
 node_service/uploads/
 node_service/coverage
+.venv-ansible
