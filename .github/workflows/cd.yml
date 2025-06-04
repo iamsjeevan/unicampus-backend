@@ -4,34 +4,34 @@ name: UniCampus Backend CD
 
 on:
   workflow_run:
-    workflows: ["UniCampus Backend CI/CD"] # Must match the 'name' of your ci.yml workflow
+    workflows: ["UniCampus Backend CI/CD"] # Must match the 'name' attribute of your ci.yml workflow
     types:
-      - completed
+      - completed # Triggers when the CI workflow finishes
     branches:
-      - main
+      - main # Only for CI workflows that ran on the main branch
 
 jobs:
   deploy_to_ec2:
     name: Deploy to EC2 via Ansible
     runs-on: ubuntu-latest
-    # Only run if the triggering CI workflow (specifically its run on 'main') was successful
+    # This condition ensures the CD job only runs if the triggering CI workflow was successful
     if: github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Checkout Code from the triggering commit
         uses: actions/checkout@v4
         with:
-          # This checkouts out the specific commit that successfully passed CI and triggered this CD.
-          # This ensures you deploy the exact code that was tested and built.
+          # This checks out the specific commit that successfully passed CI and triggered this CD.
+          # This ensures you deploy the exact code version that was tested and built.
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Python (for Ansible)
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9' # Ansible Core supports various Python 3 versions
+          python-version: '3.9' # A common Python version compatible with Ansible
 
       - name: Install Ansible
-        run: pip install ansible-core # Or 'ansible' for the full package
+        run: pip install ansible-core # Installs the core Ansible engine
 
       - name: Configure SSH Key for Ansible
         env:
@@ -40,27 +40,33 @@ jobs:
           mkdir -p ~/.ssh
           echo "${EC2_SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa_ansible_ec2
           chmod 600 ~/.ssh/id_rsa_ansible_ec2
-          # Add EC2 host key to known_hosts to avoid interactive prompt
+          # Add EC2 host's public key to known_hosts to avoid interactive SSH prompts
           # This assumes your EC2_HOST_IP secret is just the IP/DNS, not user@host
           ssh-keyscan -H ${{ secrets.EC2_HOST_IP }} >> ~/.ssh/known_hosts
-
 
       - name: Create Ansible Inventory File
         run: |
           echo "[ec2_instances]" > inventory.ini
           echo "${{ secrets.EC2_HOST_IP }} ansible_user=ec2-user ansible_ssh_private_key_file=~/.ssh/id_rsa_ansible_ec2" >> inventory.ini
-          # Optional: if you still need to disable StrictHostKeyChecking, though ssh-keyscan is preferred
+          # If you need to add specific Ansible connection variables, you can add them here:
           # echo "[ec2_instances:vars]" >> inventory.ini
-          # echo "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" >> inventory.ini
+          # echo "ansible_python_interpreter=/usr/bin/python3" >> inventory.ini # Example
 
-            - name: Run Ansible Playbook
+      - name: Run Ansible Playbook
         env:
+          # This GITHUB_PAT is used by the Ansible playbook ON THE EC2 INSTANCE to clone the repo
           ANSIBLE_EC2_GITHUB_PAT: ${{ secrets.EC2_GITHUB_PAT }}
         run: |
-          # Optional: Add this line to confirm current directory in Actions
-          # pwd
+          # --- Debugging: Uncomment these lines if you have path issues ---
+          # echo "Current working directory: $(pwd)"
+          # echo "--- Listing root directory contents: ---"
           # ls -la
-          # ls -la ansible/
-          ansible-playbook -i ansible/ec2_inventory.ini ansible/deploy_demo_ec2.yml \
+          # echo "--- Listing 'ansible' directory contents (if it exists): ---"
+          # ls -la ansible/ || true # '|| true' prevents error if dir doesn't exist
+          # echo "--- Contents of inventory.ini: ---"
+          # cat inventory.ini
+          # --- End Debugging ---
+
+          ansible-playbook -i inventory.ini ansible/deploy_demo_ec2.yml \
             --extra-vars "GITHUB_PAT=${ANSIBLE_EC2_GITHUB_PAT}" \
             -v
