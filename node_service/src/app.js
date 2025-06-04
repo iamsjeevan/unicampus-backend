@@ -7,7 +7,7 @@ const app = express();
 
 // Enable CORS for your frontend origin:
 const corsOptions = {
-  origin: 'https://unicampusmsrit.netlify.app', // <-- replace with your frontend URL
+  origin: 'https://unicampusrit.netlify.app', // <-- replace with your frontend URL
   credentials: true, // if you need cookies/auth headers (optional)
 };
 app.use(cors(corsOptions));
