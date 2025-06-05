@@ -1,64 +1,57 @@
-# app/services/file_handler.py
-import base64
+# Example: app/services/file_handler.py (or wherever save_base64_image is)
 import os
+import base64
 import uuid
-from flask import current_app, url_for
+from flask import current_app # To access app.config
 
-def save_base64_image(base64_string, upload_folder_name, filename_prefix="img"):
-    if not base64_string or not base64_string.startswith('data:image'):
-        raise ValueError("Invalid base64 image string format or empty string.")
+# Ensure this directory exists or is created when the app starts
+# UPLOAD_FOLDER_BASE = current_app.config['UPLOAD_FOLDER'] # This will be an absolute path on the server
 
-    try:
-        header, encoded_data = base64_string.split(',', 1)
-        image_type = header.split(';')[0].split('/')[1]
-        allowed_types = ['png', 'jpeg', 'jpg', 'gif', 'webp']
-        if image_type.lower() not in allowed_types:
-            raise ValueError(f"Unsupported image type: {image_type}. Allowed: {', '.join(allowed_types)}")
-        image_data = base64.b64decode(encoded_data)
-    except Exception as e:
-        current_app.logger.error(f"Base64 decoding error: {e}", exc_info=True)
-        raise ValueError(f"Could not decode base64 string: {str(e)}")
+def save_base64_image(base64_string_with_prefix: str, subfolder_name: str, base_filename_prefix: str) -> str:
+    """
+    Saves a base64 encoded image to the specified subfolder within UPLOAD_FOLDER
+    and returns the full public HTTPS URL.
+    """
+    if not base64_string_with_prefix or not base64_string_with_prefix.startswith('data:image'):
+        raise ValueError("Invalid base64 image string")
 
-    base_upload_path_config = current_app.config.get('UPLOAD_FOLDER')
-    if not base_upload_path_config:
-        current_app.logger.error("UPLOAD_FOLDER is not configured in the Flask app.")
-        raise EnvironmentError("UPLOAD_FOLDER not configured.")
+    header, encoded_data = base64_string_with_prefix.split(',', 1)
+    image_data = base64.b64decode(encoded_data)
     
-    # Ensure UPLOAD_FOLDER is absolute
-    if not os.path.isabs(base_upload_path_config):
-        base_upload_path = os.path.join(current_app.instance_path, base_upload_path_config)
-    else:
-        base_upload_path = base_upload_path_config
-
-    if not os.path.exists(base_upload_path):
-        os.makedirs(base_upload_path, exist_ok=True)
-
-    target_folder_path = os.path.join(base_upload_path, upload_folder_name)
-    if not os.path.exists(target_folder_path):
-        os.makedirs(target_folder_path, exist_ok=True)
+    # Determine file extension
+    # e.g., 'data:image/png;base64' -> 'png'
+    try:
+        file_extension = header.split('/')[1].split(';')[0]
+        if not file_extension or file_extension not in ['png', 'jpg', 'jpeg', 'gif', 'webp']:
+            file_extension = 'png' # Default to png if unknown or invalid
+    except IndexError:
+        file_extension = 'png' # Default if parsing fails
 
     unique_id = uuid.uuid4().hex
-    filename_with_ext = f"{filename_prefix}_{unique_id}.{image_type}"
-    full_file_path = os.path.join(target_folder_path, filename_with_ext)
+    filename_on_disk = f"{base_filename_prefix}_{unique_id}.{file_extension}"
 
-    try:
-        with open(full_file_path, 'wb') as f:
-            f.write(image_data)
-        current_app.logger.info(f"Saved image to: {full_file_path}")
-    except IOError as e:
-        current_app.logger.error(f"IOError saving image to {full_file_path}: {e}", exc_info=True)
-        raise IOError(f"Could not save image file: {str(e)}")
-
-    # Path for URL generation, relative to the root of UPLOAD_FOLDER
-    path_for_url = os.path.join(upload_folder_name, filename_with_ext)
+    # Get the absolute base upload directory from Flask config
+    # This UPLOAD_FOLDER should be the root for all uploads, e.g., /path/to/your/project/instance/uploads
+    base_upload_dir_on_server = current_app.config['UPLOAD_FOLDER'] 
     
-    try:
-        # Uses the 'serve_uploaded_file' route defined in __init__.py
-        image_url = url_for('serve_uploaded_file', filename=path_for_url, _external=True)
-        current_app.logger.info(f"Generated public URL for image: {image_url}")
-        return image_url
-    except RuntimeError as e:
-        current_app.logger.error(f"RuntimeError generating URL (likely 'serve_uploaded_file' endpoint issue): {e}", exc_info=True)
-        # Fallback to a relative path based on STATIC_UPLOAD_SUBPATH config
-        static_subpath = current_app.config.get("STATIC_UPLOAD_SUBPATH", "uploads")
-        return f"/{static_subpath}/{path_for_url}"
+    # Create the full path to the subfolder on the server
+    target_subfolder_on_server = os.path.join(base_upload_dir_on_server, subfolder_name)
+    os.makedirs(target_subfolder_on_server, exist_ok=True) # Create subfolder if it doesn't exist
+
+    file_path_on_server = os.path.join(target_subfolder_on_server, filename_on_disk)
+
+    with open(file_path_on_server, 'wb') as f:
+        f.write(image_data)
+    
+    current_app.logger.info(f"Saved image to: {file_path_on_server}")
+
+    # --- CONSTRUCT THE PUBLIC HTTPS URL ---
+    backend_public_base_url = current_app.config['BACKEND_PUBLIC_BASE_URL'].rstrip('/')
+    static_upload_url_segment = current_app.config['STATIC_UPLOAD_SUBPATH'].strip('/')
+    
+    # The public URL path will be /<STATIC_UPLOAD_SUBPATH>/<subfolder_name>/<filename_on_disk>
+    # e.g., /uploads/community_icons/cicon_communityId_uuid.png
+    public_url = f"{backend_public_base_url}/{static_upload_url_segment}/{subfolder_name}/{filename_on_disk}"
+    
+    current_app.logger.info(f"Generated public URL: {public_url}")
+    return public_url
