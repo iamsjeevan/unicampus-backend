@@ -12,7 +12,7 @@ const allowedOrigins = [
   'https://your-other-frontend.com',
   'https://refactored-space-winner-9wgrw9gjxrphx5r9-8080.app.github.dev',
   'https://fuzzy-space-doodle-v4774w5qq7wf5jg-8080.app.github.dev',
-  'https://bug-free-waddle-qgj7rjq4j7fx49g-8080.app.github.dev/'// newly added origin
+  'https://bug-free-waddle-qgj7rjq4j7fx49g-8080.app.github.dev'// newly added origin
 ];
 
 const corsOptions = {
