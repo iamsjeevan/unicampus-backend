@@ -19,24 +19,27 @@ def create_community_route():
         return jsonify({"status": "fail", "message": "Request body is empty or not JSON."}), 400
     current_user_id = get_jwt_identity()
 
-    icon_url_for_db = data.get('icon')  # Can be a URL, base64 string, or None
-    banner_url_for_db = data.get('bannerImage')  # Can be a URL, base64 string, or None
+    icon_url_for_db = data.get('icon')
+    banner_url_for_db = data.get('bannerImage')
 
-    # Process icon if it's a base64 string
     if icon_url_for_db and isinstance(icon_url_for_db, str) and icon_url_for_db.startswith('data:image'):
         try:
             icon_url_for_db = save_base64_image(icon_url_for_db, 'community_icons', "cicon_new")
         except Exception as e:
             current_app.logger.error(f"Icon processing error during community creation: {e}", exc_info=True)
             return jsonify({"status": "error", "message": f"Icon processing error: {str(e)}"}), 400
+    elif isinstance(icon_url_for_db, str) and not icon_url_for_db.startswith('http'): # If it's not base64 and not a URL, treat as invalid
+        icon_url_for_db = None
 
-    # Process bannerImage if it's a base64 string
+
     if banner_url_for_db and isinstance(banner_url_for_db, str) and banner_url_for_db.startswith('data:image'):
         try:
             banner_url_for_db = save_base64_image(banner_url_for_db, 'community_banners', "cbanner_new")
         except Exception as e:
             current_app.logger.error(f"Banner processing error during community creation: {e}", exc_info=True)
             return jsonify({"status": "error", "message": f"Banner processing error: {str(e)}"}), 400
+    elif isinstance(banner_url_for_db, str) and not banner_url_for_db.startswith('http'):
+        banner_url_for_db = None
 
     try:
         new_community = Community.create_community(
@@ -44,11 +47,10 @@ def create_community_route():
             description=data.get('description'),
             created_by_id_str=current_user_id,
             rules=data.get('rules'),
-            icon_url=icon_url_for_db,  # Use processed URL (or original if it was already a URL/None)
-            banner_image_url=banner_url_for_db,  # Use processed URL
+            icon_url=icon_url_for_db,
+            banner_image_url=banner_url_for_db,
             tags=data.get('tags')
         )
-        # create_community should raise ValueError if validation fails or name exists
         return jsonify({"status": "success", "data": {"community": new_community}}), 201
     except ValueError as ve:
         return jsonify({"status": "fail", "message": str(ve)}), 400
@@ -64,16 +66,13 @@ def update_community_route(community_id):
         return jsonify({"status": "fail", "message": "No data provided for update."}), 400
 
     current_user_id_str = get_jwt_identity()
-    update_payload_for_model = {} # Data to pass to Community.update_community
+    update_payload_for_model = {}
 
-    # Process textual fields that can be updated
     allowed_text_fields = ['name', 'description', 'rules', 'tags']
     for field in allowed_text_fields:
-        if field in data: # Only include if field is present in request
+        if field in data:
             update_payload_for_model[field] = data[field]
 
-    # Handle 'icon' from frontend (can be base64, URL, or None)
-    # Model's update_community expects 'iconUrl' for DB storage
     if 'icon' in data:
         icon_data = data['icon']
         if icon_data and isinstance(icon_data, str) and icon_data.startswith('data:image'):
@@ -83,15 +82,12 @@ def update_community_route(community_id):
             except Exception as e:
                 current_app.logger.error(f"Icon processing error for community {community_id}: {e}", exc_info=True)
                 return jsonify({"status": "fail", "message": f"Icon processing error: {str(e)}"}), 400
-        elif icon_data is None: # Allow clearing the icon
+        elif icon_data is None:
             update_payload_for_model['iconUrl'] = None
-        elif isinstance(icon_data, str): # Assume it's a direct URL if not base64 and not None
-             update_payload_for_model['iconUrl'] = icon_data
-        # If 'icon' is present but an invalid type (e.g., number, object), it's ignored here.
-        # Add validation if specific error for bad type is needed.
+        elif isinstance(icon_data, str) and (icon_data.startswith('http') or icon_data == ""): # Allow empty string to clear if model handles it
+             update_payload_for_model['iconUrl'] = icon_data if icon_data else None
 
-    # Handle 'bannerImage' from frontend
-    # Model's update_community expects 'bannerImage' (same as DB field name)
+
     if 'bannerImage' in data:
         banner_data = data['bannerImage']
         if banner_data and isinstance(banner_data, str) and banner_data.startswith('data:image'):
@@ -101,10 +97,11 @@ def update_community_route(community_id):
             except Exception as e:
                 current_app.logger.error(f"Banner processing error for community {community_id}: {e}", exc_info=True)
                 return jsonify({"status": "fail", "message": f"Banner image processing error: {str(e)}"}), 400
-        elif banner_data is None: # Allow clearing
+        elif banner_data is None:
             update_payload_for_model['bannerImage'] = None
-        elif isinstance(banner_data, str): # Assume direct URL
-            update_payload_for_model['bannerImage'] = banner_data
+        elif isinstance(banner_data, str) and (banner_data.startswith('http') or banner_data == ""):
+            update_payload_for_model['bannerImage'] = banner_data if banner_data else None
+
 
     if not update_payload_for_model:
         return jsonify({"status": "fail", "message": "No valid fields to update provided."}), 400
@@ -113,7 +110,7 @@ def update_community_route(community_id):
         updated_community = Community.update_community(community_id, current_user_id_str, update_payload_for_model)
         return jsonify({"status": "success", "data": {"community": updated_community}}), 200
     except ValueError as ve:
-        return jsonify({"status": "fail", "message": str(ve)}), 400
+        return jsonify({"status": "fail", "message": str(ve)}), 400 # Handles "not found" or validation errors from model
     except PermissionError as pe:
         return jsonify({"status": "fail", "message": str(pe)}), 403
     except bson_errors.InvalidId:
@@ -129,14 +126,14 @@ def get_communities_route():
     try:
         user_identity = get_jwt_identity()
         current_user_id_str = str(user_identity) if user_identity else None
-    except Exception: pass # If get_jwt_identity fails (e.g., no token), current_user_id_str remains None
+    except Exception: pass
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('limit', 10, type=int)
         search_query = request.args.get('searchQuery', type=str)
         result = Community.get_all_communities(page=page, per_page=per_page, search_query=search_query, current_user_id_str=current_user_id_str)
         return jsonify({"status": "success", "data": result['communities'], "results": result['total'],
-                        "pagination": {"totalItems": result['total'], "totalPages": result['pages'],
+                        "pagination": result['pagination'] if 'pagination' in result else {"totalItems": result['total'], "totalPages": result['pages'],
                                        "currentPage": result['page'], "perPage": result['per_page']}}), 200
     except Exception as e:
         current_app.logger.error(f"Error listing communities: {e}", exc_info=True)
@@ -165,18 +162,17 @@ def join_community_route(community_id):
     try:
         result = Community.join_community(community_id, current_user_id_str)
         status_code = 200
-        if result.get("already_member"): status_code = 409 # Conflict
-        elif not result.get("modified"): status_code = 400 # Bad request or no change
+        if result.get("already_member"): status_code = 409
+        elif not result.get("modified"): status_code = 400
 
         updated_community_data = None
-        if result.get("modified"):
-             # Fetch full community details again to include updated member count and user's membership status
+        if result.get("modified") or result.get("already_member"): # Also return data if already member
             updated_community_data = Community.find_by_id_or_slug(community_id, current_user_id_str)
 
         return jsonify({
-            "status": "success" if result.get("modified") else "fail",
+            "status": "success" if result.get("modified") or result.get("already_member") else "fail",
             "message": result["message"],
-            "data": {"community": updated_community_data} # Send updated community data if modified
+            "data": {"community": updated_community_data}
         }), status_code
     except ValueError as ve: return jsonify({"status": "fail", "message": str(ve)}), 400
     except Exception as e:
@@ -190,11 +186,11 @@ def leave_community_route(community_id):
     try:
         result = Community.leave_community(community_id, current_user_id_str)
         status_code = 200
-        if result.get("not_member"): status_code = 400 # Bad request
-        elif not result.get("modified"): status_code = 400 # No change or other issue
+        if result.get("not_member"): status_code = 400
+        elif not result.get("modified"): status_code = 400
 
         updated_community_data = None
-        if result.get("modified"):
+        if result.get("modified") or result.get("not_member"): # Also return data if not member (to show updated state)
             updated_community_data = Community.find_by_id_or_slug(community_id, current_user_id_str)
 
         return jsonify({
@@ -216,16 +212,30 @@ def create_post_in_community_route(community_id_from_url):
     data = request.get_json()
     if not data:
         return jsonify({"status": "fail", "message": "Request body is empty or not JSON."}), 400
+    
+    # --- Handling potential image upload for new post ---
+    image_url_for_db = data.get('image_url') # Could be an existing URL
+    image_base64 = data.get('image_base64') # Frontend might send base64 for new upload
+
+    if image_base64 and isinstance(image_base64, str) and image_base64.startswith('data:image'):
+        try:
+            # Create a unique enough prefix, perhaps involving community_id if desired, or just "postimg_new"
+            image_url_for_db = save_base64_image(image_base64, 'post_images', f"postimg_{community_id_from_url}_new")
+        except Exception as e:
+            current_app.logger.error(f"Post image processing error during post creation: {e}", exc_info=True)
+            return jsonify({"status": "error", "message": f"Post image processing error: {str(e)}"}), 400
+    elif image_url_for_db and not isinstance(image_url_for_db, str) and not image_url_for_db.startswith('http'):
+        image_url_for_db = None # Invalid URL if not http and not base64
+    # --- End image handling for new post ---
 
     try:
-        # Model's create_post expects snake_case keys in its parameters
         new_post = Post.create_post(
             community_id_str=community_id_from_url,
             author_id_str=current_user_id_str,
             title=data.get('title'),
             content_type=data.get('content_type'),
             content_text=data.get('content_text'),
-            image_url=data.get('image_url'),
+            image_url=image_url_for_db, # Use processed URL
             link_url=data.get('link_url'),
             tags=data.get('tags')
         )
@@ -248,11 +258,11 @@ def get_posts_for_community_route(community_id):
     try:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('limit', 10, type=int)
-        sort_by = request.args.get('sortBy', 'new', type=str).lower() # Query params often camelCase
+        sort_by = request.args.get('sortBy', 'new', type=str).lower()
 
         if page < 1: page = 1
         if per_page < 1: per_page = 1
-        elif per_page > 50: per_page = 50 # Max limit
+        elif per_page > 50: per_page = 50
         if sort_by not in ['new', 'hot', 'top']: sort_by = 'new'
 
         result = Post.get_posts_for_community_for_user(
@@ -260,10 +270,10 @@ def get_posts_for_community_route(community_id):
             page=page, per_page=per_page, sort_by=sort_by
         )
         return jsonify({"status": "success", "data": result.get('posts',[]), "results": result.get('total',0),
-                        "pagination": {"totalItems": result.get('total',0), "totalPages": result.get('pages',0),
-                                       "currentPage": result.get('page',1), "perPage": result.get('per_page',10), "sortBy": sort_by }}), 200
+                        "pagination": result.get('pagination', {"totalItems": result.get('total',0), "totalPages": result.get('pages',0),
+                                       "currentPage": result.get('page',1), "perPage": result.get('per_page',10), "sortBy": sort_by })}), 200
     except ValueError as ve:
-        return jsonify({"status": "fail", "message": str(ve)}), 404 # e.g. community not found
+        return jsonify({"status": "fail", "message": str(ve)}), 404
     except Exception as e:
         current_app.logger.error(f"Error getting posts for C:{community_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to get posts."}), 500
@@ -280,6 +290,8 @@ def get_post_detail_route(post_id):
         post = Post.find_by_id_for_user(post_id, current_user_id_str)
         if not post: return jsonify({"status": "fail", "message": "Post not found."}), 404
         return jsonify({"status": "success", "data": {"post": post}}), 200
+    except bson_errors.InvalidId:
+        return jsonify({"status": "fail", "message": "Invalid post ID format."}), 400
     except Exception as e:
         current_app.logger.error(f"Error getting post detail {post_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Could not get post details."}), 500
@@ -291,23 +303,45 @@ def update_post_route(post_id):
     data = request.get_json()
     if not data: return jsonify({"status": "fail", "message": "Request body is empty."}), 400
 
-    # Model's update_post expects a dictionary with snake_case keys
     update_payload = {}
     if 'title' in data: update_payload['title'] = data['title']
     if 'content_text' in data: update_payload['content_text'] = data['content_text']
-    # For image/link posts, typically content_text is not updated, but image_url/link_url might be
-    # The Post.update_post model method should enforce this logic (e.g., only update content_text if type is 'text')
-    if 'image_url' in data: update_payload['image_url'] = data['image_url']
-    if 'link_url' in data: update_payload['link_url'] = data['link_url']
+    if 'link_url' in data: update_payload['link_url'] = data['link_url'] # For link posts
     if 'tags' in data: update_payload['tags'] = data['tags']
 
+    # --- MODIFICATION: Handle image update for posts ---
+    # Frontend can send 'image_base64' for new upload, or 'image_url' to set/clear URL
+    if 'image_base64' in data:
+        image_data_base64 = data['image_base64']
+        if image_data_base64 and isinstance(image_data_base64, str) and image_data_base64.startswith('data:image'):
+            try:
+                # Ensure your save_base64_image function exists and works as expected
+                # 'post_images' is a suggested subfolder for post-specific images
+                image_public_url = save_base64_image(image_data_base64, 'post_images', f"postimg_{post_id}")
+                update_payload['image_url'] = image_public_url
+            except Exception as e:
+                current_app.logger.error(f"Post image processing error for post {post_id}: {e}", exc_info=True)
+                return jsonify({"status": "fail", "message": f"Post image processing error: {str(e)}"}), 400
+        elif image_data_base64 is None: # Explicitly clear image if frontend sends null for base64
+            update_payload['image_url'] = None
+    elif 'image_url' in data: # If frontend sends image_url (could be existing, new, or empty string/null to clear)
+        image_url_input = data['image_url']
+        if image_url_input is None or (isinstance(image_url_input, str) and image_url_input == ""):
+            update_payload['image_url'] = None # Clear image
+        elif isinstance(image_url_input, str) and image_url_input.startswith('http'):
+            update_payload['image_url'] = image_url_input # Set to new/existing URL
+    # --- END MODIFICATION ---
 
     if not update_payload: return jsonify({"status": "fail", "message": "No updatable fields provided or fields are empty."}), 400
+    
     try:
         result = Post.update_post(post_id, current_user_id_str, update_payload)
+        # result should contain {"post": updated_post_dict, "message": "..."}
         return jsonify({"status": "success", "message": result.get("message", "Post updated."), "data": {"post": result.get("post")}}), 200
-    except ValueError as ve: return jsonify({"status": "fail", "message": str(ve)}), 400 # Or 404 if "not found"
+    except ValueError as ve: return jsonify({"status": "fail", "message": str(ve)}), 400 
     except PermissionError as pe: return jsonify({"status": "fail", "message": str(pe)}), 403
+    except bson_errors.InvalidId:
+        return jsonify({"status": "fail", "message": "Invalid post ID format."}), 400
     except Exception as e:
         current_app.logger.error(f"Error updating post {post_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Could not update post."}), 500
@@ -317,13 +351,14 @@ def update_post_route(post_id):
 def delete_post_route(post_id):
     current_user_id_str = get_jwt_identity()
     try:
-        # Model's delete_post now raises ValueError or PermissionError, or returns True
         Post.delete_post(post_id_str=post_id, user_id_str=current_user_id_str)
         return jsonify({"status": "success", "message": "Post deleted."}), 200
-    except ValueError as ve: # Covers "Post not found"
+    except ValueError as ve:
         return jsonify({"status": "fail", "message": str(ve)}), 404
-    except PermissionError as pe: # Covers "not authorized"
+    except PermissionError as pe:
         return jsonify({"status": "fail", "message": str(pe)}), 403
+    except bson_errors.InvalidId:
+        return jsonify({"status": "fail", "message": "Invalid post ID format."}), 400
     except Exception as e:
         current_app.logger.error(f"Error deleting post {post_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Could not delete post."}), 500
@@ -344,10 +379,12 @@ def vote_on_post_route(post_id):
                         "data": {
                             "upvotes": updated_post_data.get("upvotes"),
                             "downvotes": updated_post_data.get("downvotes"),
-                            "user_vote": updated_post_data.get("user_vote") # From Post.to_dict
+                            "user_vote": updated_post_data.get("user_vote")
                         }}), 200
-    except ValueError as ve: # Covers "Post not found" or "Invalid vote direction" from model
-        return jsonify({"status": "fail", "message": str(ve)}), 400 # Or 404 if "not found"
+    except ValueError as ve:
+        return jsonify({"status": "fail", "message": str(ve)}), 400
+    except bson_errors.InvalidId:
+        return jsonify({"status": "fail", "message": "Invalid post ID format."}), 400
     except Exception as e:
         current_app.logger.error(f"Error voting on post {post_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Could not process vote."}), 500
@@ -361,7 +398,7 @@ def create_comment_on_post_route(post_id):
     if not data: return jsonify({"status": "fail", "message": "Request body is empty or not JSON."}), 400
 
     text = data.get('text')
-    parent_comment_id_str = data.get('parent_comment_id') # Optional
+    parent_comment_id_str = data.get('parent_comment_id')
 
     if not text or not text.strip(): return jsonify({"status": "fail", "message": "Comment text required."}), 400
     try:
@@ -372,8 +409,10 @@ def create_comment_on_post_route(post_id):
             parent_comment_id_str=parent_comment_id_str
         )
         return jsonify({"status": "success", "data": {"comment": new_comment}}), 201
-    except ValueError as ve: # Covers "Post not found", "Parent comment not found", "Text too long" etc.
-        return jsonify({"status": "fail", "message": str(ve)}), 400 # Or 404 if "not found"
+    except ValueError as ve:
+        return jsonify({"status": "fail", "message": str(ve)}), 400
+    except bson_errors.InvalidId: # Catch invalid post_id or parent_comment_id if applicable
+        return jsonify({"status": "fail", "message": "Invalid ID format for post or parent comment."}), 400
     except Exception as e:
         current_app.logger.error(f"Error creating comment on P:{post_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Could not create comment."}), 500
@@ -395,17 +434,19 @@ def get_comments_for_post_route(post_id):
         if page < 1: page = 1
         if per_page < 1: per_page = 1
         elif per_page > 100: per_page = 100
-        if sort_by not in ['newest', 'oldest', 'top']: sort_by = 'newest' # Add 'top' if implemented in model
+        if sort_by not in ['newest', 'oldest', 'top']: sort_by = 'newest'
 
         result = Comment.get_comments_for_post_for_user(
             post_id_str=post_id, current_user_id_str=current_user_id_str,
-            page=page, per_page=per_page, sort_by=sort_by, parent_id_str=None # For top-level comments
+            page=page, per_page=per_page, sort_by=sort_by, parent_id_str=None
         )
         return jsonify({"status": "success", "data": result.get('comments',[]), "results": result.get('total',0),
-                        "pagination": {"totalItems": result.get('total',0), "totalPages": result.get('pages',0),
+                        "pagination": result.get('pagination', {"totalItems": result.get('total',0), "totalPages": result.get('pages',0),
                                        "currentPage": result.get('page',1), "perPage": result.get('per_page',10), "sortBy": sort_by}}), 200
-    except ValueError as ve: # e.g. "Invalid Post ID"
+    except ValueError as ve:
         return jsonify({"status": "fail", "message": str(ve)}), 400
+    except bson_errors.InvalidId:
+        return jsonify({"status": "fail", "message": "Invalid post ID format."}), 400
     except Exception as e:
         current_app.logger.error(f"Error fetching comments for P:{post_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to get comments."}), 500
@@ -419,40 +460,41 @@ def get_replies_for_comment_route(parent_comment_id):
         current_user_id_str = str(user_identity) if user_identity else None
     except Exception: pass
     try:
-        # First, validate parent comment exists and get its post_id
-        parent_comment_doc = Comment.find_by_id(parent_comment_id) # This uses Comment.to_dict
+        parent_comment_doc = Comment.find_by_id(parent_comment_id) # This should return a dict or None
         if not parent_comment_doc:
             return jsonify({"status": "fail", "message": "Parent comment not found."}), 404
         
         post_id_for_replies = parent_comment_doc.get("post_id")
-        if not post_id_for_replies: # Should not happen if parent_comment_doc is valid
+        if not post_id_for_replies:
             return jsonify({"status": "error", "message": "Parent comment missing post association."}), 500
 
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('limit', 10, type=int)
-        sort_by = request.args.get('sortBy', 'oldest', type=str).lower() # Replies usually oldest first
+        sort_by = request.args.get('sortBy', 'oldest', type=str).lower()
 
         if page < 1: page = 1
         if per_page < 1: per_page = 1
         elif per_page > 50: per_page = 50
-        if sort_by not in ['newest', 'oldest']: sort_by = 'oldest'
+        if sort_by not in ['newest', 'oldest', 'top']: sort_by = 'oldest' # 'top' for replies might be less common
 
         result = Comment.get_comments_for_post_for_user(
             post_id_str=str(post_id_for_replies),
             current_user_id_str=current_user_id_str,
             page=page, per_page=per_page, sort_by=sort_by,
-            parent_id_str=parent_comment_id # Filter by this parent
+            parent_id_str=parent_comment_id
         )
         return jsonify({
             "status": "success", "data": result.get('comments',[]), "results": result.get('total',0),
-            "pagination": {
+            "pagination": result.get('pagination', {
                 "totalItems": result.get('total',0), "totalPages": result.get('pages',0),
                 "currentPage": result.get('page',1), "perPage": result.get('per_page',10),
                 "sortBy": sort_by
-            }
+            })
         }), 200
-    except ValueError as ve:
+    except ValueError as ve: # From get_comments_for_post_for_user if post_id is invalid (shouldn't happen here)
         return jsonify({"status": "fail", "message": str(ve)}), 400
+    except bson_errors.InvalidId:
+        return jsonify({"status": "fail", "message": "Invalid parent comment ID format."}), 400
     except Exception as e:
         current_app.logger.error(f"Error fetching replies for Cmnt:{parent_comment_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to get replies."}), 500
@@ -472,8 +514,10 @@ def vote_on_comment_route(comment_id):
         return jsonify({"status": "success", "message": result_dict.get("message"),
                         "data": {"upvotes": result_dict.get("upvotes"), "downvotes": result_dict.get("downvotes"),
                                  "user_vote": result_dict.get("user_vote")}}), 200
-    except ValueError as ve: # Covers "Comment not found" or "Invalid vote direction"
-        return jsonify({"status": "fail", "message": str(ve)}), 400 # Or 404 if "not found"
+    except ValueError as ve:
+        return jsonify({"status": "fail", "message": str(ve)}), 400
+    except bson_errors.InvalidId:
+        return jsonify({"status": "fail", "message": "Invalid comment ID format."}), 400
     except Exception as e:
         current_app.logger.error(f"Error voting on Cmnt {comment_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Could not process vote."}), 500
@@ -486,7 +530,7 @@ def update_comment_route(comment_id):
     if not data or 'text' not in data :
          return jsonify({"status": "fail", "message": "Comment text required in payload."}), 400
 
-    new_text = data.get('text') # Model's update_comment expects `new_text` as a direct arg
+    new_text = data.get('text')
 
     if not new_text or not new_text.strip(): return jsonify({"status": "fail", "message": "Comment text cannot be empty."}), 400
     try:
@@ -496,10 +540,12 @@ def update_comment_route(comment_id):
             new_text=new_text
         )
         return jsonify({"status": "success", "data": {"comment": updated_comment}}), 200
-    except ValueError as ve: # Covers "Comment not found", "Text empty/long"
-        return jsonify({"status": "fail", "message": str(ve)}), 400 # Or 404 if "not found"
+    except ValueError as ve:
+        return jsonify({"status": "fail", "message": str(ve)}), 400
     except PermissionError as pe:
         return jsonify({"status": "fail", "message": str(pe)}), 403
+    except bson_errors.InvalidId:
+        return jsonify({"status": "fail", "message": "Invalid comment ID format."}), 400
     except Exception as e:
         current_app.logger.error(f"Error updating Cmnt {comment_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Could not update comment."}), 500
@@ -509,13 +555,14 @@ def update_comment_route(comment_id):
 def delete_comment_route(comment_id):
     current_user_id_str = get_jwt_identity()
     try:
-        # Model's delete_comment raises ValueError or PermissionError, or returns True
         Comment.delete_comment(comment_id_str=comment_id, user_id_str=current_user_id_str)
         return jsonify({"status": "success", "message": "Comment deleted."}), 200
-    except ValueError as ve: # Covers "Comment not found"
+    except ValueError as ve:
         return jsonify({"status": "fail", "message": str(ve)}), 404
-    except PermissionError as pe: # Covers "not authorized"
+    except PermissionError as pe:
         return jsonify({"status": "fail", "message": str(pe)}), 403
+    except bson_errors.InvalidId:
+        return jsonify({"status": "fail", "message": "Invalid comment ID format."}), 400
     except Exception as e:
         current_app.logger.error(f"Error deleting Cmnt {comment_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Could not delete comment."}), 500
