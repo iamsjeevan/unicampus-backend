@@ -2,13 +2,19 @@
 import requests
 from bs4 import BeautifulSoup
 import re
-import json # For parsing script data if it's clean JSON
-import ast # For safely evaluating Python-like string literals
+import json
+import ast
 from urllib.parse import urljoin
 from app.config import Config # Import Config to access URLs
+import warnings
 
-# --- PARSING HELPER FUNCTIONS (Python equivalents) ---
+# Suppress InsecureRequestWarning:
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+warnings.simplefilter('ignore', InsecureRequestWarning)
 
+# --- PARSING HELPER FUNCTIONS (UNCHANGED, assumed to be working if HTML structure is consistent) ---
+# _extract_basic_student_info, _extract_dashboard_subject_summaries, _extract_exam_history
+# (Your existing parsing functions go here)
 def _extract_basic_student_info(dashboard_html_content):
     soup = BeautifulSoup(dashboard_html_content, 'lxml')
     student_info = {
@@ -87,21 +93,14 @@ def _extract_dashboard_subject_summaries(dashboard_html_content):
             if not script_content:
                 continue
 
-            # Regex to find 'columns: [...]' array-like structures
             columns_content_regex = re.compile(r'columns:\s*(\[[\s\S]*?\])\s*,?\s*(?:type|padding|radius|bindto|gauge|size)', re.IGNORECASE)
             columns_match = columns_content_regex.search(script_content)
 
             if columns_match and columns_match.group(1):
                 array_string = columns_match.group(1)
+                course_code_from_script_for_error = 'Unknown' # For error reporting
                 try:
-                    # Attempt to parse as JSON first (might fail if not strict JSON)
-                    # More robustly, use ast.literal_eval for Python-like literals
-                    # This part is tricky as JS array syntax can differ slightly
-                    # For `new Function('return ' + arrayString)()` in JS, ast.literal_eval is a close Python equivalent
-                    # Assuming the data is like [['CODE1', val], ['CODE2', val]]
-                    data_array = ast.literal_eval(array_string) # Be cautious with eval if source is untrusted
-                                                              # but here it's from a specific script pattern.
-                                                              # For more complex JS objects, a JS interpreter might be needed (heavy)
+                    data_array = ast.literal_eval(array_string) 
                     
                     is_cie_script = 'bindto: "#barPadding"' in script_content and 'type: "bar"' in script_content
                     is_attendance_script = 'bindto: "#gaugeTypeMulti"' in script_content and 'type: "gauge"' in script_content
@@ -110,6 +109,7 @@ def _extract_dashboard_subject_summaries(dashboard_html_content):
                         for item in data_array:
                             if isinstance(item, list) and len(item) == 2:
                                 course_code_from_script = str(item[0]).strip()
+                                course_code_from_script_for_error = course_code_from_script # Update for error context
                                 value = item[1]
                                 if not course_code_from_script:
                                     continue
@@ -117,7 +117,7 @@ def _extract_dashboard_subject_summaries(dashboard_html_content):
                                 if course_code_from_script not in results:
                                     results[course_code_from_script] = {
                                         "code": course_code_from_script,
-                                        "name": course_name_map.get(course_code_from_script, course_code_from_script), # Use mapped name if available
+                                        "name": course_name_map.get(course_code_from_script, course_code_from_script),
                                         "cieTotal": None,
                                         "attendancePercentage": None
                                     }
@@ -127,22 +127,15 @@ def _extract_dashboard_subject_summaries(dashboard_html_content):
                                 elif is_attendance_script:
                                     results[course_code_from_script]["attendancePercentage"] = value
                 except (SyntaxError, ValueError) as e:
-                    error_messages.append(f"Chart data parse error from script (Code: {course_code_from_script if 'course_code_from_script' in locals() else 'Unknown'}): {str(e)}")
-                    # Fallback or log this error
-                    pass # Continue trying other scripts or methods
+                    error_messages.append(f"Chart data parse error from script (Code: {course_code_from_script_for_error}): {str(e)}")
+                    pass
 
-        # Ensure all courses from the map are included, even if no script data found
         for code, name in course_name_map.items():
             if code not in results:
                 results[code] = {"code": code, "name": name, "cieTotal": None, "attendancePercentage": None}
-            elif results[code]["name"] == code: # If script only had code, update with name from table
+            elif results[code]["name"] == code:
                  results[code]["name"] = name
         
-        # Fallback for attendance if not found in scripts (less reliable than JS version's specific selector)
-        # This part of your JS selector `table[caption="..."]` is very specific.
-        # Replicating it precisely needs careful inspection of the HTML source if scripts fail.
-        # For now, primary extraction is from scripts.
-
     except Exception as e:
         error_messages.append(f"Error parsing dashboard summaries: {str(e)}")
 
@@ -168,7 +161,6 @@ def _extract_exam_history(exam_history_html_content):
             cr_match = re.search(r'Credits Registered\s*:\s*(\d+)', caption_text, re.IGNORECASE)
             ce_match = re.search(r'Credits Earned\s*:\s*(\d+)', caption_text, re.IGNORECASE)
             sgpa_match = re.search(r'SGPA\s*:\s*([\d.]+)', caption_text, re.IGNORECASE)
-            # Handle potential "CGPA : CGPA : X.XX" or "CGPA : X.XX"
             cgpa_match = re.search(r'CGPA\s*:\s*(?:CGPA\s*:\s*)?([\d.]+)', caption_text, re.IGNORECASE)
 
             sem_result = {
@@ -186,13 +178,9 @@ def _extract_exam_history(exam_history_html_content):
         
     return exam_history_data, error_messages
 
+# --- MAIN SCRAPING FUNCTION ---
 
 def scrape_and_parse_college_data(usn, dob_dd, dob_mm, dob_yyyy):
-    """
-    Main function to login to college portal, scrape dashboard and exam history,
-    and parse the data.
-    Returns a dictionary with structured data and any error messages.
-    """
     student_usn = usn.strip().upper()
     college_password = f"{dob_yyyy}-{str(dob_mm).zfill(2)}-{str(dob_dd).zfill(2)}"
     
@@ -207,64 +195,158 @@ def scrape_and_parse_college_data(usn, dob_dd, dob_mm, dob_yyyy):
     with requests.Session() as session:
         session.headers.update({'User-Agent': Config.SCRAPER_USER_AGENT})
 
-        # Step 1: POST to College Login URL
+        # --- Step 0: GET login page to extract Joomla token ---
+        joomla_token_name = None
+        try:
+            print(f"Fetching login page to get Joomla token from: {Config.COLLEGE_LOGIN_URL}")
+            # This initial GET also helps establish a session and get initial cookies if any are set.
+            login_page_response = session.get(
+                Config.COLLEGE_LOGIN_URL,
+                verify=False, # Bypass SSL verification
+                headers={ # Mimic browser headers from cURL
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                    'Accept-Language': 'en-GB,en;q=0.9',
+                }
+            )
+            login_page_response.raise_for_status()
+            login_page_soup = BeautifulSoup(login_page_response.text, 'lxml')
+            
+            # Find the Joomla security token. It's usually a hidden input with a 32-char hex name and value "1".
+            # <input type="hidden" name="abcdef1234567890abcdef1234567890" value="1">
+            token_input = login_page_soup.find('input', {'type': 'hidden', 'value': '1', 'name': re.compile(r'^[a-f0-9]{32}$')})
+            if token_input and token_input.get('name'):
+                joomla_token_name = token_input['name']
+                print(f"Found Joomla token name: {joomla_token_name}")
+            else:
+                # Fallback: sometimes it might be the only input with value "1" in the form
+                form = login_page_soup.find('form', id='login-form') # Adjust if form ID is different
+                if form:
+                    token_input_alt = form.find('input', {'type': 'hidden', 'value': '1'})
+                    if token_input_alt and token_input_alt.get('name') and len(token_input_alt.get('name')) > 20 : # Heuristic: token names are long
+                         joomla_token_name = token_input_alt['name']
+                         print(f"Found Joomla token name (fallback): {joomla_token_name}")
+
+                if not joomla_token_name:
+                    all_errors.append("Critical: Could not find Joomla token on the login page. Page structure might have changed.")
+                    # For debugging, you might want to save login_page_response.text
+                    scraped_data_output["errorMessages"] = all_errors
+                    return scraped_data_output, False
+        
+        except requests.exceptions.RequestException as e:
+            all_errors.append(f"Network or HTTP error fetching login page for token: {str(e)}")
+            scraped_data_output["errorMessages"] = all_errors
+            return scraped_data_output, False
+        except Exception as e:
+            all_errors.append(f"Unexpected error fetching/parsing login page for token: {str(e)}")
+            scraped_data_output["errorMessages"] = all_errors
+            return scraped_data_output, False
+
+        # --- Step 1: POST to College Login URL ---
         login_payload = {
             "username": student_usn,
-            "dd": str(dob_dd),
+            "dd": str(dob_dd), # cURL has '13+' but '+' is usually for space, not part of day.
             "mm": str(dob_mm),
             "yyyy": str(dob_yyyy),
             "passwd": college_password,
             "remember": "No",
-            "option": "com_user",
-            "task": "login",
-            "return": "",
-            Config.JOOMLA_TOKEN_NAME: Config.JOOMLA_TOKEN_VALUE,
+            "option": "com_user", # As per cURL (same as your old code)
+            "task": "login",     # As per cURL (same as your old code)
+            "return": "", # Keep it simple, relying on 302 redirect. cURL had messy value.
+            # Dynamic Joomla token
+            joomla_token_name: "1", 
+            # g-recaptcha-response and captcha-response from cURL are ignored as per your instruction
+            # "g-recaptcha-response": "YOUR_CAPTCHA_SOLUTION_IF_NEEDED",
+            # "captcha-response": "" # As seen in cURL, if needed
         }
         
+        login_headers = {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'en-GB,en;q=0.9',
+            'Cache-Control': 'max-age=0',
+            'Connection': 'keep-alive', # requests handles this usually
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Origin': Config.COLLEGE_BASE_URL, # From cURL
+            'Referer': f"{Config.COLLEGE_BASE_URL}/newparents/", # From cURL, or Config.COLLEGE_LOGIN_URL
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-User': '?1',
+            'Upgrade-Insecure-Requests': '1',
+            # sec-ch-* headers are less critical but can be added if issues persist
+        }
+
         try:
             print(f"Attempting college login for USN: {student_usn}...")
             login_response = session.post(
                 Config.COLLEGE_LOGIN_URL,
                 data=login_payload,
-                headers={
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Referer': f"{Config.COLLEGE_BASE_URL}/newparents/",
-                    'Origin': Config.COLLEGE_BASE_URL,
-                },
-                allow_redirects=False # Handle redirects manually to get dashboard URL
+                headers=login_headers,
+                verify=False, # Bypass SSL verification
+                allow_redirects=False # Handle redirects manually
             )
-            login_response.raise_for_status() # Check for 4xx/5xx errors immediately
+            # No need to call raise_for_status() here if we check status code manually
+            # because a failed login might still be a 200 OK with an error message.
 
-            # Successful login usually results in a 302 or 303 redirect
-            if login_response.status_code not in (302, 303) or 'location' not in login_response.headers:
-                all_errors.append(f"College login failed. Status: {login_response.status_code}. Expected redirect.")
-                # You might want to inspect login_response.text here for error messages from the portal
-                if "Invalid username or password" in login_response.text or "User Name and Password do not match" in login_response.text :
-                     all_errors.append("Portal indicated: Invalid username or password.")
+            # Check for login success (usually a redirect)
+            if login_response.status_code not in (301, 302, 303) or 'location' not in login_response.headers:
+                # Check for specific error messages in response body if not a redirect
+                login_fail_msg = f"College login failed. Status: {login_response.status_code}."
+                if "Invalid username or password" in login_response.text or \
+                   "User Name and Password do not match" in login_response.text or \
+                   "Username and password do not match" in login_response.text: # Common Joomla message
+                    login_fail_msg += " Portal indicated: Invalid credentials."
+                elif "Your session has expired" in login_response.text:
+                    login_fail_msg += " Portal indicated: Session expired (possibly token issue)."
+                else:
+                    login_fail_msg += " No redirect received. Check credentials or portal status."
+                    # print(f"DEBUG: Login response text: {login_response.text[:500]}") # For debugging
+                all_errors.append(login_fail_msg)
                 scraped_data_output["errorMessages"] = all_errors
-                return scraped_data_output, False # Indicate failure
+                return scraped_data_output, False
 
-            dashboard_url = urljoin(Config.COLLEGE_BASE_URL, login_response.headers['location'])
+            dashboard_url_path = login_response.headers['location']
+            # Ensure the location is a full URL or join with base
+            if dashboard_url_path.startswith(('http://', 'https://')):
+                dashboard_url = dashboard_url_path
+            else:
+                dashboard_url = urljoin(Config.COLLEGE_BASE_URL, dashboard_url_path)
+            
             print(f"Login successful, redirecting to dashboard: {dashboard_url}")
 
-            # Step 2: GET Dashboard Page
+            # --- Step 2: GET Dashboard Page ---
+            dashboard_headers = {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language': 'en-GB,en;q=0.9',
+                'Cache-Control': 'max-age=0',
+                'Connection': 'keep-alive',
+                'Referer': Config.COLLEGE_LOGIN_URL, # Referer from login page or previous redirect source
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'same-origin', # was same-origin in cURL
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1',
+            }
             print(f"Fetching dashboard for USN: {student_usn}...")
             dashboard_response = session.get(
                 dashboard_url,
-                headers={'Referer': Config.COLLEGE_LOGIN_URL}
+                headers=dashboard_headers,
+                verify=False # Bypass SSL verification
             )
-            dashboard_response.raise_for_status()
+            dashboard_response.raise_for_status() # Now we expect 200
             dashboard_html = dashboard_response.text
             
             # Parse Dashboard
             scraped_data_output["studentProfile"], profile_errors = _extract_basic_student_info(dashboard_html)
             all_errors.extend(profile_errors)
             
-            # USN Check (important)
-            if scraped_data_output["studentProfile"].get("usn") and \
-               scraped_data_output["studentProfile"]["usn"].upper() != student_usn:
+            if not scraped_data_output["studentProfile"].get("usn"):
+                all_errors.append("Failed to extract student USN from dashboard. Login might have been incomplete or page structure changed.")
+                # print(f"DEBUG: Dashboard HTML (first 500 chars): {dashboard_html[:500]}")
+                scraped_data_output["errorMessages"] = all_errors
+                return scraped_data_output, False 
+
+            if scraped_data_output["studentProfile"]["usn"].upper() != student_usn:
                 all_errors.append(f"USN mismatch! Login USN: {student_usn}, Dashboard USN: {scraped_data_output['studentProfile']['usn']}.")
-                # This is a critical error, might indicate scraping wrong page or login issue
                 scraped_data_output["errorMessages"] = all_errors
                 return scraped_data_output, False 
 
@@ -272,40 +354,52 @@ def scrape_and_parse_college_data(usn, dob_dd, dob_mm, dob_yyyy):
             all_errors.extend(summary_errors)
             print("Dashboard data extracted.")
 
-            # Step 3: GET Exam History Page
-            exam_history_url = urljoin(Config.COLLEGE_BASE_URL, Config.COLLEGE_EXAM_HISTORY_PATH)
-            print(f"Fetching exam history for USN: {student_usn} from {exam_history_url}...")
+            # --- Step 3: GET Exam History Page ---
+            exam_history_full_url = urljoin(Config.COLLEGE_BASE_URL, Config.COLLEGE_EXAM_HISTORY_PATH)
+            
+            exam_history_headers = {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language': 'en-GB,en;q=0.9',
+                'Connection': 'keep-alive',
+                'Referer': dashboard_url, # Referer is the dashboard URL
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'same-origin',
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1',
+            }
+            print(f"Fetching exam history for USN: {student_usn} from {exam_history_full_url}...")
             exam_history_response = session.get(
-                exam_history_url,
-                headers={'Referer': dashboard_url} # Referer is the dashboard URL
+                exam_history_full_url,
+                headers=exam_history_headers,
+                verify=False # Bypass SSL verification
             )
-            # Exam history might not exist for all students (e.g., first sem) or might return non-200 if issues
+            
             if exam_history_response.status_code == 200:
                 exam_history_html = exam_history_response.text
                 scraped_data_output["examHistory"], eh_errors = _extract_exam_history(exam_history_html)
                 all_errors.extend(eh_errors)
                 print("Exam history data extracted.")
             else:
-                all_errors.append(f"Failed to fetch exam history. Status: {exam_history_response.status_code}. URL: {exam_history_url}")
+                all_errors.append(f"Failed to fetch exam history. Status: {exam_history_response.status_code}. URL: {exam_history_full_url}")
                 print(f"Warning: Exam history fetch failed with status {exam_history_response.status_code}")
 
         except requests.exceptions.RequestException as e:
             all_errors.append(f"Network or HTTP error during scraping: {str(e)}")
             print(f"Scraping Error: {str(e)}")
-            scraped_data_output["errorMessages"] = all_errors
-            return scraped_data_output, False # Indicate failure
+            # The SSL error will now be caught here if verify=False is missed or if other network issues occur
         except Exception as e:
             all_errors.append(f"An unexpected error occurred during scraping/parsing: {str(e)}")
             import traceback
             traceback.print_exc() # For server logs
-            scraped_data_output["errorMessages"] = all_errors
-            return scraped_data_output, False # Indicate failure
-
-        scraped_data_output["errorMessages"] = all_errors
         
-        # If studentProfile.usn is still None after trying, it's a major parsing/login issue
-        if not scraped_data_output["studentProfile"].get("usn"):
-            all_errors.append("Failed to extract student USN from dashboard. Login might have been incomplete or page structure changed.")
+        scraped_data_output["errorMessages"].extend(all_errors) # Use extend if all_errors can have multiple items
+        
+        if not scraped_data_output["studentProfile"].get("usn") and not any("Critical" in err for err in scraped_data_output["errorMessages"]):
+             # Only add this if not already failed due to token or other critical step
+            scraped_data_output["errorMessages"].append("Failed to retrieve valid student data from the portal. The portal might be down or its structure changed.")
             return scraped_data_output, False
 
-        return scraped_data_output, True # Indicate success
+        # Success if we have a USN and no critical errors earlier
+        is_success = bool(scraped_data_output["studentProfile"].get("usn"))
+        return scraped_data_output, is_success
