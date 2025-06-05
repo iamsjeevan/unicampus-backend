@@ -25,6 +25,19 @@ class Config:
 
     # User Agent for the scraper
     SCRAPER_USER_AGENT = 'UniCampusAppBackend/PythonScraper/1.1 (compatible; Mozilla/5.0)'
+    UPLOAD_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'instance', 'uploads')
+    
+    # The subpath within your static URL path where uploads are served.
+    # e.g., if UPLOAD_FOLDER is instance/uploads, and you serve instance/uploads as /static/media
+    # this would be 'media'.
+    # If UPLOAD_FOLDER is app/static/uploads, this would be 'uploads'.
+    # This is used by url_for('static', filename=STATIC_UPLOAD_SUBPATH + '/folder/file.png')
+    STATIC_UPLOAD_SUBPATH = 'uploads' # Assumes UPLOAD_FOLDER is configured to be served under /static/uploads/
+                                     # For example, if app.static_folder is 'app/static',
+                                     # and UPLOAD_FOLDER is 'app/static/uploads'
+
+    # Optional: Max content length for uploads
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB
     # Or, if you want to mimic the browser more closely from your cURL:
     # SCRAPER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
 
