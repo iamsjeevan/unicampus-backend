@@ -16,9 +16,16 @@ class Config:
     # College Portal Configuration
     COLLEGE_LOGIN_URL = 'https://parents.msrit.edu/newparents/index.php'
     COLLEGE_BASE_URL = 'https://parents.msrit.edu'
-    COLLEGE_EXAM_HISTORY_PATH = '/newparents/index.php?option=com_history&task=getResult'
-    
-    JOOMLA_TOKEN_NAME = "c4687d49910f5bc56504838230a3f690" # As per your JS
-    JOOMLA_TOKEN_VALUE = "1" # As per your JS
+    COLLEGE_EXAM_HISTORY_PATH = '/newparents/index.php?option=com_history&task=getResult' # Note: The leading '/' is fine if urljoin handles it, but often paths are relative without it.
+                                                                                       # The cURL shows `index.php?option=...` directly.
+                                                                                       # My code uses urljoin(Config.COLLEGE_BASE_URL, Config.COLLEGE_EXAM_HISTORY_PATH)
+                                                                                       # so "newparents/index.php?..." might be slightly cleaner for the path if COLLEGE_BASE_URL is just the domain.
+                                                                                       # For your current setup, ensure it resolves correctly.
+                                                                                       # The previous `newparents/index.php?option=com_history&task=getResult` was good.
 
+    # User Agent for the scraper
     SCRAPER_USER_AGENT = 'UniCampusAppBackend/PythonScraper/1.1 (compatible; Mozilla/5.0)'
+    # Or, if you want to mimic the browser more closely from your cURL:
+    # SCRAPER_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
+
+    # JOOMLA_TOKEN_NAME and JOOMLA_TOKEN_VALUE are removed as they are handled dynamically by the scraper.
