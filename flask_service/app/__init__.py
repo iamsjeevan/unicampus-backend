@@ -1,5 +1,5 @@
 # app/__init__.py
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory # <--- MODIFIED HERE
 from flask_pymongo import PyMongo
 from flask_jwt_extended import JWTManager
 from .config import Config
