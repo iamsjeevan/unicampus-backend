@@ -17,14 +17,9 @@ This repository contains the backend services and complete DevOps infrastructure
 
 ## 🏛️ Architecture Overview
 
-This project is architected as a set of containerized microservices managed by Docker Compose for local development and deployed to AWS using an automated CI/CD pipeline.
+This project is architected as a set of containerized microservices managed by Docker Compose for local development and deployed to AWS using an automated CI/CD pipeline. The diagram below illustrates the complete CI/CD and deployment workflow.
 
-*   **Node.js Service (`node_service`):** The primary API for the MERN application, handling user authentication, data management, and core business logic.
-*   **Flask Service (`flask_service`):** A dedicated Python service responsible for scraping essential data from the college website, processing it, and making it available to the main application.
-*   **DevOps Automation:** The entire workflow from code commit to deployment is automated using a suite of modern DevOps tools.
-
-*A visual diagram of the architecture would be placed here.*
-`![Architecture Diagram](./docs/architecture.png)`
+![UniCampus Architecture](./docs/unicampus_architecture.png)
 
 ---
 
